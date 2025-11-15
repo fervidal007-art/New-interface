@@ -2,7 +2,7 @@ import socket
 import threading
 
 from flask import Flask, request, jsonify
-from flask_socketio import SocketIO, emit, join_room
+from flask_socketio import SocketIO, emit
 
 # ----------------------------
 # Configuración general
@@ -20,7 +20,7 @@ SERVER_NAME = "FlaskBackend"  # nombre lógico del servidor para el DISCOVER
 # ----------------------------
 app = Flask(__name__)
 app.config["SECRET_KEY"] = "dev-secret"  # cámbialo en producción
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins="*")  # permite file:// y otros orígenes
 
 # nombre_dispositivo -> sid
 devices_by_name = {}
@@ -64,7 +64,7 @@ def send_command():
 
 
 # ----------------------------
-# Socket.IO: eventos del dispositivo
+# Socket.IO: eventos del dispositivo / web client
 # ----------------------------
 
 @socketio.on("connect")
@@ -86,8 +86,8 @@ def on_disconnect():
 @socketio.on("register")
 def on_register(data):
     """
-    El dispositivo manda:
-    { "name": "RoboMesha-01" }
+    El cliente (web o Python) manda:
+    { "name": "RoboMesha-01" } o { "name": "WebClient-01" }
     """
     sid = request.sid
     name = (data or {}).get("name")
@@ -99,15 +99,15 @@ def on_register(data):
     devices_by_name[name] = sid
     names_by_sid[sid] = name
 
-    print(f"[SOCKET] Dispositivo registrado: {name} (sid={sid})")
+    print(f"[SOCKET] Cliente registrado: {name} (sid={sid})")
     emit("registered", {"status": "ok", "name": name})
 
 
 @socketio.on("device_message")
 def on_device_message(data):
     """
-    El dispositivo puede mandar mensajes arbitrarios.
-    Ejemplo: estados, telemetría, logs, etc.
+    Mensajes arbitrarios desde el dispositivo o cliente web.
+    Ejemplo: estados, telemetría, logs, respuestas, etc.
     """
     sid = request.sid
     name = names_by_sid.get(sid, "anon")
@@ -116,7 +116,7 @@ def on_device_message(data):
 
 
 # ----------------------------
-# Descubrimiento UDP (multicast)
+# Descubrimiento UDP (multicast) para el cliente Python
 # ----------------------------
 
 def discovery_responder():
@@ -154,7 +154,7 @@ def discovery_responder():
 # ----------------------------
 
 def main():
-    # Hilo para responder DISCOVER
+    # Hilo para responder DISCOVER (para clientes Python)
     t = threading.Thread(target=discovery_responder, daemon=True)
     t.start()
 
