@@ -8,11 +8,13 @@
     body { font-family: sans-serif; max-width: 720px; margin: 20px auto; }
     button { margin: 4px 0; }
     .panel { border: 1px solid #ccc; padding: 10px; border-radius: 4px; margin-bottom: 16px; background: #fafafa; }
-    #log { border: 1px solid #ccc; padding: 8px; height: 200px; overflow-y: auto; font-size: 0.9rem; background: #f9f9f9; }
+    .event-log { border: 1px solid #ccc; padding: 8px; height: 180px; overflow-y: auto; font-size: 0.9rem; background: #f9f9f9; }
+    .chat-log { border: 1px solid #ccc; padding: 8px; height: 220px; overflow-y: auto; font-size: 0.95rem; background: #fff; white-space: pre-line; }
     input[type="text"] { width: 100%; padding: 6px; margin: 4px 0; box-sizing: border-box; }
-    select { width: 100%; min-height: 110px; }
+    select { width: 100%; min-height: 130px; }
     .helper { font-size: 0.85rem; color: #555; margin: 4px 0; }
     .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .status { font-weight: bold; }
   </style>
 </head>
 <body>
@@ -28,68 +30,141 @@
     <button id="btnRefreshDevices" disabled>Actualizar lista</button>
     <div class="helper" id="devicesHint">Conéctate para solicitar la lista de dispositivos disponibles.</div>
     <select id="deviceSelect" size="5" disabled></select>
-    <input type="text" id="targetInput" placeholder="O escribe manualmente el nombre del dispositivo..." disabled />
+  </div>
+
+  <h3>Conversación</h3>
+  <div class="panel">
+    <div class="helper status" id="conversationHeader">Selecciona un dispositivo para ver los mensajes.</div>
+    <div id="chatLog" class="chat-log"></div>
   </div>
 
   <h3>Enviar mensaje al dispositivo seleccionado</h3>
   <div class="panel">
-    <input type="text" id="msgInput" placeholder="Escribe un mensaje JSON o texto..." />
+    <input type="text" id="msgInput" placeholder="Escribe un mensaje JSON o texto..." disabled />
     <button id="btnSend" disabled>Enviar</button>
   </div>
 
-  <h3>Log</h3>
-  <div id="log"></div>
+  <h3>Eventos</h3>
+  <div id="systemLog" class="panel event-log"></div>
 
     <script>
-    const MY_NAME = "WebClient-01";
+    const OPERATOR_BASE_NAME = "ControlPanel";
     let socket = null;
+    let assignedName = "";
     let knownDevices = [];
+    let activeDevice = "";
+    const conversations = {};
 
     const btnConnect = document.getElementById("btnConnect");
     const btnDisconnect = document.getElementById("btnDisconnect");
     const btnSend = document.getElementById("btnSend");
     const btnRefreshDevices = document.getElementById("btnRefreshDevices");
     const msgInput = document.getElementById("msgInput");
-    const targetInput = document.getElementById("targetInput");
     const deviceSelect = document.getElementById("deviceSelect");
     const devicesHint = document.getElementById("devicesHint");
-    const logDiv = document.getElementById("log");
+    const systemLog = document.getElementById("systemLog");
+    const conversationHeader = document.getElementById("conversationHeader");
+    const chatLog = document.getElementById("chatLog");
 
     function log(msg) {
       const time = new Date().toISOString().split("T")[1].split(".")[0];
-      logDiv.innerText += "[" + time + "] " + msg + "\n";
-      logDiv.scrollTop = logDiv.scrollHeight;
+      systemLog.innerText += "[" + time + "] " + msg + "\n";
+      systemLog.scrollTop = systemLog.scrollHeight;
+    }
+
+    function formatTime(tsMs) {
+      const date = new Date(tsMs);
+      return date.toISOString().split("T")[1].split(".")[0];
+    }
+
+    function renderConversation() {
+      if (!activeDevice) {
+        chatLog.innerText = "";
+        conversationHeader.textContent = "Selecciona un dispositivo para ver los mensajes.";
+        return;
+      }
+
+      conversationHeader.textContent = "Conversación con " + activeDevice;
+      const history = conversations[activeDevice] || [];
+      if (!history.length) {
+        chatLog.innerText = "Sin mensajes con este dispositivo todavía.";
+        return;
+      }
+
+      const serverName = assignedName || "Servidor";
+      const lines = history.map((entry) => {
+        const direction = entry.direction === "from_device"
+          ? activeDevice + " → " + serverName
+          : serverName + " → " + activeDevice;
+        let originTag = "";
+        if (entry.origin && entry.origin !== activeDevice && entry.origin !== serverName) {
+          originTag = " (" + entry.origin + ")";
+        }
+        return "[" + formatTime(entry.ts) + "] " + direction + originTag + ": " + JSON.stringify(entry.payload);
+      });
+      chatLog.innerText = lines.join("\n");
+    }
+
+    function appendConversation(device, direction, payload, origin, timestamp) {
+      if (!device) return;
+      if (!conversations[device]) {
+        conversations[device] = [];
+      }
+      const tsMs = typeof timestamp === "number" ? timestamp * 1000 : Date.now();
+      conversations[device].push({ direction, payload, origin, ts: tsMs });
+      if (conversations[device].length > 300) {
+        conversations[device].shift();
+      }
+      if (device === activeDevice) {
+        renderConversation();
+      }
+    }
+
+    function refreshSendState() {
+      const canSend = socket && socket.connected && !!activeDevice;
+      btnSend.disabled = !canSend;
+      msgInput.disabled = !canSend;
+    }
+
+    function setActiveDevice(name) {
+      const next = name && knownDevices.includes(name) ? name : "";
+      activeDevice = next;
+      if (deviceSelect.value !== next) {
+        deviceSelect.value = next;
+      }
+      renderConversation();
+      refreshSendState();
     }
 
     function updateDeviceSelect(devices) {
-      const previousManual = targetInput.value.trim();
-      const previousSelect = deviceSelect.value;
-      knownDevices = Array.isArray(devices) ? [...devices].sort() : [];
-
+      const list = Array.isArray(devices) ? [...devices].sort() : [];
+      knownDevices = list;
       deviceSelect.innerHTML = "";
-      if (!knownDevices.length) {
+
+      if (!list.length) {
         deviceSelect.disabled = true;
         devicesHint.textContent = socket && socket.connected
           ? "No hay dispositivos registrados todavía."
           : "Conéctate para solicitar la lista de dispositivos disponibles.";
+        setActiveDevice("");
         return;
       }
 
-      knownDevices.forEach((name) => {
+      list.forEach((name) => {
         const option = document.createElement("option");
         option.value = name;
         option.textContent = name;
         deviceSelect.appendChild(option);
       });
 
-      const desired = previousManual || previousSelect;
-      if (desired && knownDevices.includes(desired)) {
-        deviceSelect.value = desired;
-        targetInput.value = desired;
+      if (!list.includes(activeDevice)) {
+        setActiveDevice(list[0]);
+      } else {
+        setActiveDevice(activeDevice);
       }
 
       deviceSelect.disabled = !socket || !socket.connected;
-      devicesHint.textContent = "Selecciona un dispositivo o escribe su nombre manualmente.";
+      devicesHint.textContent = "Selecciona un dispositivo para revisar su conversación.";
     }
 
     function requestDeviceList() {
@@ -101,29 +176,20 @@
       log("Solicitando lista de dispositivos...");
     }
 
-    function getTargetName() {
-      const manual = targetInput.value.trim();
-      if (manual) return manual;
-      return deviceSelect.value || "";
-    }
-
     function setConnectedState(connected) {
       btnConnect.disabled = connected;
       btnDisconnect.disabled = !connected;
-      btnSend.disabled = !connected;
-      msgInput.disabled = !connected;
       btnRefreshDevices.disabled = !connected;
-      targetInput.disabled = !connected;
-      deviceSelect.disabled = !connected || !knownDevices.length;
       if (!connected) {
-        msgInput.value = "";
-        targetInput.value = "";
         updateDeviceSelect([]);
+        msgInput.value = "";
       }
+      deviceSelect.disabled = !connected || !knownDevices.length;
+      refreshSendState();
     }
 
     deviceSelect.addEventListener("change", () => {
-      targetInput.value = deviceSelect.value;
+      setActiveDevice(deviceSelect.value);
     });
 
     btnRefreshDevices.addEventListener("click", requestDeviceList);
@@ -141,35 +207,30 @@
       socket.on("connect", () => {
         log("Conectado al backend, registrando...");
         setConnectedState(true);
-        socket.emit("register", { name: MY_NAME });
+        socket.emit("register", { role: "operator", base_name: OPERATOR_BASE_NAME });
       });
 
       socket.on("registered", (data) => {
+        assignedName = data && data.name ? data.name : "";
         log("Registro confirmado: " + JSON.stringify(data));
         requestDeviceList();
       });
 
       socket.on("device_list", (data) => {
-        const devices = Array.isArray(data.devices) ? data.devices : [];
+        const devices = data && Array.isArray(data.devices) ? data.devices : [];
         updateDeviceSelect(devices);
         log("Lista recibida: " + JSON.stringify(devices));
       });
 
+      socket.on("conversation_message", (msg) => {
+        appendConversation(msg.device, msg.direction, msg.payload, msg.origin, msg.ts);
+        if (msg.device && !knownDevices.includes(msg.device)) {
+          updateDeviceSelect([...knownDevices, msg.device]);
+        }
+      });
+
       socket.on("command_sent", (data) => {
         log("Servidor confirmó envío a " + data.target + ": " + JSON.stringify(data.payload));
-      });
-
-      socket.on("device_message", (data) => {
-        log("Mensaje desde " + data.from + ": " + JSON.stringify(data.payload));
-      });
-
-      socket.on("command", (data) => {
-        log("Comando recibido: " + JSON.stringify(data));
-        socket.emit("device_message", {
-          from: MY_NAME,
-          type: "ack",
-          received: data
-        });
       });
 
       socket.on("disconnect", () => {
@@ -183,7 +244,7 @@
       });
 
       socket.onAny((event, ...args) => {
-        const ignored = ["command", "registered", "device_list", "command_sent", "device_message"];
+        const ignored = ["connect", "disconnect", "device_list", "registered", "conversation_message", "command_sent"];
         if (!ignored.includes(event)) {
           log("Evento '" + event + "': " + JSON.stringify(args));
         }
@@ -202,9 +263,8 @@
         log("No hay conexión.");
         return;
       }
-      const target = getTargetName();
-      if (!target) {
-        log("Selecciona o escribe el nombre del dispositivo destino.");
+      if (!activeDevice) {
+        log("Selecciona un dispositivo destino.");
         return;
       }
 
@@ -215,11 +275,11 @@
       try {
         payload = JSON.parse(text);
       } catch (_) {
-        payload = { from: MY_NAME, type: "message", text };
+        payload = { from: assignedName || "operator", type: "message", text };
       }
 
-      socket.emit("send_command", { target, payload });
-      log("Enviado a " + target + ": " + JSON.stringify(payload));
+      socket.emit("send_command", { target: activeDevice, payload });
+      log("Enviado a " + activeDevice + ": " + JSON.stringify(payload));
       msgInput.value = "";
     });
 

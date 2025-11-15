@@ -1,6 +1,7 @@
 import socket
 import threading
 import json
+import time
 
 from flask import Flask, request, jsonify
 from flask_socketio import SocketIO, emit
@@ -39,6 +40,45 @@ socketio = SocketIO(app, cors_allowed_origins="*")  # permite file:// y otros or
 devices_by_name = {}
 # sid -> nombre_dispositivo
 names_by_sid = {}
+roles_by_sid = {}
+operators = set()
+assigned_names = set()
+
+
+def generate_unique_name(base: str) -> str:
+    label = (base or "Device").strip() or "Device"
+    candidate = label
+    suffix = 1
+    while candidate in assigned_names:
+        candidate = f"{label}-{suffix:02d}"
+        suffix += 1
+    assigned_names.add(candidate)
+    return candidate
+
+
+def release_name(name):
+    if name:
+        assigned_names.discard(name)
+
+
+def broadcast_device_list():
+    payload = {"devices": sorted(devices_by_name.keys())}
+    for op_sid in list(operators):
+        socketio.emit("device_list", payload, room=op_sid)
+
+
+def broadcast_conversation(device, direction, payload, origin):
+    if not device:
+        return
+    message = {
+        "device": device,
+        "direction": direction,
+        "payload": payload,
+        "origin": origin,
+        "ts": time.time(),
+    }
+    for op_sid in list(operators):
+        socketio.emit("conversation_message", message, room=op_sid)
 
 
 # ----------------------------
@@ -76,6 +116,7 @@ def send_command():
 
     # Enviamos evento 'command' solo al dispositivo objetivo
     socketio.emit("command", payload, room=sid)
+    broadcast_conversation(target, "to_device", payload, origin="http")
     return jsonify({"status": "sent", "target": target})
 
 
@@ -92,59 +133,75 @@ def on_connect():
 def on_disconnect():
     sid = request.sid
     name = names_by_sid.pop(sid, None)
-    if name:
+    role = roles_by_sid.pop(sid, None)
+    release_name(name)
+
+    if role == "device" and name:
         devices_by_name.pop(name, None)
+        broadcast_device_list()
         print(f"[SOCKET] Dispositivo '{name}' desconectado (sid={sid})")
+    elif role == "operator":
+        operators.discard(sid)
+        print(f"[SOCKET] Operador '{name or sid}' desconectado (sid={sid})")
     else:
-        print(f"[SOCKET] Cliente anÃ³nimo desconectado (sid={sid})")
+        print(f"[SOCKET] Cliente anónimo desconectado (sid={sid})")
 
 
 @socketio.on("register")
 def on_register(data):
     """
-    El cliente (web o Python) manda:
-    { "name": "RoboMesha-01" } o { "name": "WebClient-01" }
+    Registro de clientes. El servidor asigna un nombre único y distingue
+    entre roles 'device' (robots/equipos) y 'operator' (la interfaz web).
     """
     sid = request.sid
-    name = (data or {}).get("name")
+    payload = data or {}
+    role = payload.get("role", "device")
+    if role not in {"device", "operator"}:
+        role = "device"
 
-    if not name:
-        emit("error", {"error": "Falta 'name' en register"})
-        print(f"[SOCKET] Registro invÃ¡lido desde sid={sid}, data={data}")
-        return
+    base_name = payload.get("base_name") or payload.get("name")
+    if role == "operator":
+        base_name = base_name or "Operator"
+    else:
+        base_name = base_name or "Device"
 
-    devices_by_name[name] = sid
+    name = generate_unique_name(base_name)
     names_by_sid[sid] = name
+    roles_by_sid[sid] = role
 
-    print(f"\n[SOCKET] Cliente registrado: {name} (sid={sid})")
-    print("[SOCKET] Datos de registro:")
-    print(pretty(data))
+    if role == "device":
+        devices_by_name[name] = sid
+        broadcast_device_list()
+    else:
+        operators.add(sid)
+        emit("device_list", {"devices": sorted(devices_by_name.keys())}, room=sid)
 
-    emit("registered", {"status": "ok", "name": name})
+    print(f"\n[SOCKET] Cliente registrado: {name} (sid={sid}, role={role})")
+    if payload:
+        print("[SOCKET] Datos de registro:")
+        print(pretty(payload))
+
+    emit("registered", {"status": "ok", "name": name, "role": role})
 
 
 @socketio.on("device_message")
 def on_device_message(data):
     """
-    Mensajes arbitrarios desde el dispositivo o cliente web.
-    Ejemplo: estados, telemetrÃ­a, logs, respuestas, etc.
+    Mensajes arbitrarios desde un dispositivo hacia el servidor.
     """
     sid = request.sid
     name = names_by_sid.get(sid, "anon")
+    role = roles_by_sid.get(sid)
 
-    print(f"\nðŸ“¥ [SOCKET] device_message de '{name}' (sid={sid}):")
+    if role != "device":
+        emit("error", {"error": "Solo los dispositivos pueden emitir 'device_message'"}, room=sid)
+        return
+
+    print(f"\n📥 [SOCKET] device_message de '{name}' (sid={sid}):")
     print(pretty(data))
-    print("ðŸ“¥ [SOCKET] fin mensaje\n")
+    print("📥 [SOCKET] fin mensaje\n")
 
-    socketio.emit(
-        "device_message",
-        {"from": name, "payload": data},
-        skip_sid=sid,
-    )
-
-
-
-
+    broadcast_conversation(name, "from_device", data, origin=name)
 
 
 @socketio.on("list_devices")
@@ -153,7 +210,11 @@ def on_list_devices(_payload=None):
     Devuelve al solicitante la lista de dispositivos registrados y listos.
     """
     sid = request.sid
-    emit("device_list", {"devices": list(devices_by_name.keys())}, room=sid)
+    if roles_by_sid.get(sid) != "operator":
+        emit("error", {"error": "Acceso denegado a list_devices"}, room=sid)
+        return
+
+    emit("device_list", {"devices": sorted(devices_by_name.keys())}, room=sid)
 
 
 @socketio.on("send_command")
@@ -164,6 +225,11 @@ def on_send_command(data):
     """
     sid = request.sid
     sender = names_by_sid.get(sid, "anon")
+    role = roles_by_sid.get(sid)
+
+    if role != "operator":
+        emit("error", {"error": "Solo un operador puede enviar comandos"}, room=sid)
+        return
 
     target = (data or {}).get("target")
     payload = (data or {}).get("payload")
@@ -182,8 +248,10 @@ def on_send_command(data):
     print("[SOCKET] fin comando\n")
 
     socketio.emit("command", payload, room=target_sid)
+    broadcast_conversation(target, "to_device", payload, origin=sender)
 
     emit("command_sent", {"target": target, "payload": payload}, room=sid)
+
 
 @socketio.on("error")
 def on_error_event(err):

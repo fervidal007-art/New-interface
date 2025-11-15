@@ -10,7 +10,8 @@ import socketio  # python-socketio client
 MCAST_GRP = "239.255.100.100"
 MCAST_PORT = 50000
 
-MY_NAME = "RoboMesha-Client02"   # Nombre con el que se registra
+DEVICE_BASE_NAME = "RoboMesha"
+ASSIGNED_NAME = None
 DISCOVERY_TIMEOUT = 3.0          # Segundos máximo para descubrir servidor
 
 
@@ -19,7 +20,7 @@ DISCOVERY_TIMEOUT = 3.0          # Segundos máximo para descubrir servidor
 # ----------------------------------------------------
 def discover_server(timeout=DISCOVERY_TIMEOUT):
     """
-    Envía:   DISCOVER <MY_NAME>
+    Envía:   DISCOVER <DEVICE_BASE_NAME>
     Espera:  HELLO <SERVER_NAME> <HTTP_PORT>
     Devuelve: (server_ip, http_port, server_name) o None
     """
@@ -27,7 +28,7 @@ def discover_server(timeout=DISCOVERY_TIMEOUT):
     sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 1)
     sock.settimeout(timeout)
 
-    discover_msg = f"DISCOVER {MY_NAME}".encode("utf-8")
+    discover_msg = f"DISCOVER {DEVICE_BASE_NAME}".encode("utf-8")
     print(f"[DISCOVERY] Buscando servidor en {MCAST_GRP}:{MCAST_PORT} ...")
     sock.sendto(discover_msg, (MCAST_GRP, MCAST_PORT))
 
@@ -76,16 +77,24 @@ def pretty(obj):
         return str(obj)
 
 
+def current_name():
+    return ASSIGNED_NAME or DEVICE_BASE_NAME
+
+
 @sio.event
 def connect():
     print("[SOCKET] Conectado al servidor, registrando...")
-    sio.emit("register", {"name": MY_NAME})
+    sio.emit("register", {"role": "device", "base_name": DEVICE_BASE_NAME})
 
 
 @sio.event
 def registered(data):
+    global ASSIGNED_NAME
+    ASSIGNED_NAME = data.get("name") or ASSIGNED_NAME
     print("[SOCKET] Registro confirmado:")
     print(pretty(data))
+    if ASSIGNED_NAME:
+        print(f"[SOCKET] Nombre asignado por el servidor: {ASSIGNED_NAME}")
 
 
 @sio.event
@@ -108,7 +117,7 @@ def on_command(data):
 
     # Enviar ACK
     ack = {
-        "from": MY_NAME,
+        "from": current_name(),
         "type": "ack",
         "received": data
     }
@@ -151,7 +160,7 @@ def input_loop():
         try:
             payload = json.loads(text)
         except:
-            payload = {"from": MY_NAME, "type": "message", "text": text}
+            payload = {"from": current_name(), "type": "message", "text": text}
 
         sio.emit("device_message", payload)
         print("[CLIENT] JSON enviado:")
