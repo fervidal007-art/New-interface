@@ -10,7 +10,7 @@ import socketio  # python-socketio client
 MCAST_GRP = "239.255.100.100"
 MCAST_PORT = 50000
 
-MY_NAME = "RoboMesha-Client01"   # Nombre con el que se registra
+MY_NAME = "RoboMesha-Client02"   # Nombre con el que se registra
 DISCOVERY_TIMEOUT = 3.0          # Segundos máximo para descubrir servidor
 
 
