@@ -1,0 +1,130 @@
+# ============================
+# LOGS
+# ============================
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ============================
+# NODE
+# ============================
+node_modules
+dist
+dist-ssr
+*.local
+
+# ============================
+# PYTHON / FLASK
+# ============================
+
+# Entornos virtuales
+venv/
+.venv/
+ENV/
+env/
+env.bak/
+
+# Archivos creados por Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Archivos de configuración
+*.pyo
+*.pyd
+
+# Carpetas de builds y distribuciones
+build/
+develop-eggs/
+dist/
+downloads/
+sdist/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Config de pip
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Coverage / testing
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+pytest_cache/
+.pytest_cache/
+
+# Mypy / análisis estático
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# IPython / Jupyter
+.ipynb_checkpoints
+profile_default/
+ipython_config.py
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Django / Flask / frameworks
+instance/
+.webassets-cache
+
+# Scrapy
+.scrapy
+
+# Sphinx
+docs/_build/
+doc/_build/
+
+# PyBuilder
+target/
+
+# SQLAlchemy
+alembic.ini
+alembic/
+
+# ============================
+# EDITOR / OS
+# ============================
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ============================
+# ENVIRONMENT VARIABLES
+# ============================
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local

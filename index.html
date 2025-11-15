@@ -5,33 +5,54 @@
   <title>Cliente Web Socket.IO</title>
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
   <style>
-    body { font-family: sans-serif; max-width: 600px; margin: 20px auto; }
+    body { font-family: sans-serif; max-width: 720px; margin: 20px auto; }
     button { margin: 4px 0; }
+    .panel { border: 1px solid #ccc; padding: 10px; border-radius: 4px; margin-bottom: 16px; background: #fafafa; }
     #log { border: 1px solid #ccc; padding: 8px; height: 200px; overflow-y: auto; font-size: 0.9rem; background: #f9f9f9; }
-    input[type="text"] { width: 100%; padding: 4px; margin: 4px 0; box-sizing: border-box; }
+    input[type="text"] { width: 100%; padding: 6px; margin: 4px 0; box-sizing: border-box; }
+    select { width: 100%; min-height: 110px; }
+    .helper { font-size: 0.85rem; color: #555; margin: 4px 0; }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; }
   </style>
 </head>
 <body>
   <h1>Cliente Web – Control</h1>
 
-  <button id="btnConnect">Conectar</button>
-  <button id="btnDisconnect" disabled>Desconectar</button>
+  <div class="actions">
+    <button id="btnConnect">Conectar</button>
+    <button id="btnDisconnect" disabled>Desconectar</button>
+  </div>
 
-  <h3>Enviar mensaje</h3>
-  <input type="text" id="msgInput" placeholder="Escribe un mensaje JSON o texto..." />
-  <button id="btnSend" disabled>Enviar</button>
+  <h3>Dispositivos conectados</h3>
+  <div class="panel">
+    <button id="btnRefreshDevices" disabled>Actualizar lista</button>
+    <div class="helper" id="devicesHint">Conéctate para solicitar la lista de dispositivos disponibles.</div>
+    <select id="deviceSelect" size="5" disabled></select>
+    <input type="text" id="targetInput" placeholder="O escribe manualmente el nombre del dispositivo..." disabled />
+  </div>
+
+  <h3>Enviar mensaje al dispositivo seleccionado</h3>
+  <div class="panel">
+    <input type="text" id="msgInput" placeholder="Escribe un mensaje JSON o texto..." />
+    <button id="btnSend" disabled>Enviar</button>
+  </div>
 
   <h3>Log</h3>
   <div id="log"></div>
 
-  <script>
+    <script>
+    const MY_NAME = "WebClient-01";
     let socket = null;
-    const MY_NAME = "WebClient-01";  // nombre que verá el backend
+    let knownDevices = [];
 
     const btnConnect = document.getElementById("btnConnect");
     const btnDisconnect = document.getElementById("btnDisconnect");
     const btnSend = document.getElementById("btnSend");
+    const btnRefreshDevices = document.getElementById("btnRefreshDevices");
     const msgInput = document.getElementById("msgInput");
+    const targetInput = document.getElementById("targetInput");
+    const deviceSelect = document.getElementById("deviceSelect");
+    const devicesHint = document.getElementById("devicesHint");
     const logDiv = document.getElementById("log");
 
     function log(msg) {
@@ -40,11 +61,72 @@
       logDiv.scrollTop = logDiv.scrollHeight;
     }
 
+    function updateDeviceSelect(devices) {
+      const previousManual = targetInput.value.trim();
+      const previousSelect = deviceSelect.value;
+      knownDevices = Array.isArray(devices) ? [...devices].sort() : [];
+
+      deviceSelect.innerHTML = "";
+      if (!knownDevices.length) {
+        deviceSelect.disabled = true;
+        devicesHint.textContent = socket && socket.connected
+          ? "No hay dispositivos registrados todavía."
+          : "Conéctate para solicitar la lista de dispositivos disponibles.";
+        return;
+      }
+
+      knownDevices.forEach((name) => {
+        const option = document.createElement("option");
+        option.value = name;
+        option.textContent = name;
+        deviceSelect.appendChild(option);
+      });
+
+      const desired = previousManual || previousSelect;
+      if (desired && knownDevices.includes(desired)) {
+        deviceSelect.value = desired;
+        targetInput.value = desired;
+      }
+
+      deviceSelect.disabled = !socket || !socket.connected;
+      devicesHint.textContent = "Selecciona un dispositivo o escribe su nombre manualmente.";
+    }
+
+    function requestDeviceList() {
+      if (!socket || !socket.connected) {
+        log("No hay conexión para refrescar dispositivos.");
+        return;
+      }
+      socket.emit("list_devices");
+      log("Solicitando lista de dispositivos...");
+    }
+
+    function getTargetName() {
+      const manual = targetInput.value.trim();
+      if (manual) return manual;
+      return deviceSelect.value || "";
+    }
+
     function setConnectedState(connected) {
       btnConnect.disabled = connected;
       btnDisconnect.disabled = !connected;
       btnSend.disabled = !connected;
+      msgInput.disabled = !connected;
+      btnRefreshDevices.disabled = !connected;
+      targetInput.disabled = !connected;
+      deviceSelect.disabled = !connected || !knownDevices.length;
+      if (!connected) {
+        msgInput.value = "";
+        targetInput.value = "";
+        updateDeviceSelect([]);
+      }
     }
+
+    deviceSelect.addEventListener("change", () => {
+      targetInput.value = deviceSelect.value;
+    });
+
+    btnRefreshDevices.addEventListener("click", requestDeviceList);
 
     btnConnect.addEventListener("click", () => {
       if (socket && socket.connected) {
@@ -52,9 +134,7 @@
         return;
       }
 
-      // Forzar conexión a tu backend en localhost:5000
       const url = "http://localhost:5000";
-
       log("Conectando a " + url + "...");
       socket = io(url);
 
@@ -66,11 +146,21 @@
 
       socket.on("registered", (data) => {
         log("Registro confirmado: " + JSON.stringify(data));
+        requestDeviceList();
       });
 
-      socket.on("disconnect", () => {
-        log("Desconectado del backend.");
-        setConnectedState(false);
+      socket.on("device_list", (data) => {
+        const devices = Array.isArray(data.devices) ? data.devices : [];
+        updateDeviceSelect(devices);
+        log("Lista recibida: " + JSON.stringify(devices));
+      });
+
+      socket.on("command_sent", (data) => {
+        log("Servidor confirmó envío a " + data.target + ": " + JSON.stringify(data.payload));
+      });
+
+      socket.on("device_message", (data) => {
+        log("Mensaje desde " + data.from + ": " + JSON.stringify(data.payload));
       });
 
       socket.on("command", (data) => {
@@ -82,12 +172,19 @@
         });
       });
 
+      socket.on("disconnect", () => {
+        log("Desconectado del backend.");
+        setConnectedState(false);
+        socket = null;
+      });
+
       socket.on("error", (err) => {
         log("Error recibido: " + JSON.stringify(err));
       });
 
       socket.onAny((event, ...args) => {
-        if (event !== "command" && event !== "registered") {
+        const ignored = ["command", "registered", "device_list", "command_sent", "device_message"];
+        if (!ignored.includes(event)) {
           log("Evento '" + event + "': " + JSON.stringify(args));
         }
       });
@@ -97,7 +194,6 @@
       if (socket) {
         log("Forzando desconexión...");
         socket.disconnect();
-        setConnectedState(false);
       }
     });
 
@@ -106,6 +202,12 @@
         log("No hay conexión.");
         return;
       }
+      const target = getTargetName();
+      if (!target) {
+        log("Selecciona o escribe el nombre del dispositivo destino.");
+        return;
+      }
+
       const text = msgInput.value.trim();
       if (!text) return;
 
@@ -116,10 +218,12 @@
         payload = { from: MY_NAME, type: "message", text };
       }
 
-      socket.emit("device_message", payload);
-      log("Enviado: " + JSON.stringify(payload));
+      socket.emit("send_command", { target, payload });
+      log("Enviado a " + target + ": " + JSON.stringify(payload));
       msgInput.value = "";
     });
+
+    setConnectedState(false);
   </script>
 </body>
 </html>

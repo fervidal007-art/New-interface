@@ -10,12 +10,12 @@ import socketio  # python-socketio client
 MCAST_GRP = "239.255.100.100"
 MCAST_PORT = 50000
 
-MY_NAME = "RoboMesha-Client01"   # el nombre con el que se registra
-DISCOVERY_TIMEOUT = 3.0          # segundos máximo para descubrir servidor
+MY_NAME = "RoboMesha-Client01"   # Nombre con el que se registra
+DISCOVERY_TIMEOUT = 3.0          # Segundos máximo para descubrir servidor
 
 
 # ----------------------------------------------------
-# DISCOVERY: Encontrar al servidor sin conocer la IP
+# DISCOVERY (autodetectar backend sin conocer IP)
 # ----------------------------------------------------
 def discover_server(timeout=DISCOVERY_TIMEOUT):
     """
@@ -65,7 +65,15 @@ def discover_server(timeout=DISCOVERY_TIMEOUT):
 # ----------------------------------------------------
 # SOCKET.IO CLIENT
 # ----------------------------------------------------
-sio = socketio.Client()
+sio = socketio.Client(logger=False, engineio_logger=False)
+
+
+def pretty(obj):
+    """Convierte JSON en string formateado."""
+    try:
+        return json.dumps(obj, indent=2, ensure_ascii=False)
+    except:
+        return str(obj)
 
 
 @sio.event
@@ -76,7 +84,8 @@ def connect():
 
 @sio.event
 def registered(data):
-    print(f"[SOCKET] Registro confirmado: {data}")
+    print("[SOCKET] Registro confirmado:")
+    print(pretty(data))
 
 
 @sio.event
@@ -84,26 +93,46 @@ def disconnect():
     print("[SOCKET] Desconectado del backend.")
 
 
+@sio.event
+def error(data):
+    print("[SOCKET] Error recibido:")
+    print(pretty(data))
+
+
+# 🔥 EVENTO: COMMAND
 @sio.on("command")
 def on_command(data):
-    print(f"[SOCKET] Comando recibido: {data}")
+    print("\n🔻🔻🔻  JSON RECIBIDO DEL SERVIDOR (command) 🔻🔻🔻")
+    print(pretty(data))
+    print("🔺🔺🔺 FIN JSON 🔺🔺🔺\n")
 
-    # Enviar respuesta/ACK
+    # Enviar ACK
     ack = {
         "from": MY_NAME,
         "type": "ack",
         "received": data
     }
     sio.emit("device_message", ack)
-    print("[SOCKET] ACK enviado.")
+
+
+# 🔥 Capturar TODOS LOS EVENTOS que el servidor mande
+@sio.on("*")
+def on_any_event(event, data):
+    if event == "command":
+        return  # ya lo manejamos arriba
+
+    print(f"\n🟦 Evento recibido: '{event}'")
+    print(pretty(data))
+    print("🟦 Fin del evento\n")
 
 
 # ----------------------------------------------------
-# INPUT LOOP PARA ENVIAR MENSAJES DESDE CONSOLA
+# INPUT LOOP PARA ENVIAR MENSAJES
 # ----------------------------------------------------
 def input_loop():
-    print("Escribe mensajes para enviarlos al backend.")
-    print("Usa /quit para desconectar.")
+    print("Escribe mensajes JSON o texto para enviar al backend.")
+    print("Usa /quit para salir.")
+
     while True:
         try:
             text = input("> ").strip()
@@ -125,7 +154,8 @@ def input_loop():
             payload = {"from": MY_NAME, "type": "message", "text": text}
 
         sio.emit("device_message", payload)
-        print(f"[CLIENT] Enviado: {payload}")
+        print("[CLIENT] JSON enviado:")
+        print(pretty(payload))
 
 
 # ----------------------------------------------------
@@ -147,7 +177,7 @@ def main():
         print(f"[ERROR] No se pudo conectar al backend: {e}")
         return
 
-    # Iniciar hilo de input
+    # Hilo para leer mensajes desde consola
     t = threading.Thread(target=input_loop, daemon=True)
     t.start()
 

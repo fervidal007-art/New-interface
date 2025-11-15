@@ -1,26 +1,39 @@
 import socket
 import threading
+import json
 
 from flask import Flask, request, jsonify
 from flask_socketio import SocketIO, emit
 
+
 # ----------------------------
-# Configuración general
+# ConfiguraciÃ³n general
 # ----------------------------
 HTTP_PORT = 5000
 
 MCAST_GRP = "239.255.100.100"
 MCAST_PORT = 50000
 
-SERVER_NAME = "FlaskBackend"  # nombre lógico del servidor para el DISCOVER
+SERVER_NAME = "FlaskBackend"  # nombre lÃ³gico del servidor para el DISCOVER
+
+
+# ----------------------------
+# Utilidades
+# ----------------------------
+
+def pretty(obj):
+    try:
+        return json.dumps(obj, indent=2, ensure_ascii=False)
+    except Exception:
+        return str(obj)
 
 
 # ----------------------------
 # Flask + Socket.IO
 # ----------------------------
 app = Flask(__name__)
-app.config["SECRET_KEY"] = "dev-secret"  # cámbialo en producción
-socketio = SocketIO(app, cors_allowed_origins="*")  # permite file:// y otros orígenes
+app.config["SECRET_KEY"] = "dev-secret"  # cÃ¡mbialo en producciÃ³n
+socketio = SocketIO(app, cors_allowed_origins="*")  # permite file:// y otros orÃ­genes
 
 # nombre_dispositivo -> sid
 devices_by_name = {}
@@ -58,6 +71,9 @@ def send_command():
     if not sid:
         return jsonify({"error": f"Dispositivo '{target}' no conectado"}), 404
 
+    print("\n[HTTP] Enviando comando al dispositivo:", target)
+    print(pretty(payload))
+
     # Enviamos evento 'command' solo al dispositivo objetivo
     socketio.emit("command", payload, room=sid)
     return jsonify({"status": "sent", "target": target})
@@ -80,7 +96,7 @@ def on_disconnect():
         devices_by_name.pop(name, None)
         print(f"[SOCKET] Dispositivo '{name}' desconectado (sid={sid})")
     else:
-        print(f"[SOCKET] Cliente anónimo desconectado (sid={sid})")
+        print(f"[SOCKET] Cliente anÃ³nimo desconectado (sid={sid})")
 
 
 @socketio.on("register")
@@ -94,12 +110,16 @@ def on_register(data):
 
     if not name:
         emit("error", {"error": "Falta 'name' en register"})
+        print(f"[SOCKET] Registro invÃ¡lido desde sid={sid}, data={data}")
         return
 
     devices_by_name[name] = sid
     names_by_sid[sid] = name
 
-    print(f"[SOCKET] Cliente registrado: {name} (sid={sid})")
+    print(f"\n[SOCKET] Cliente registrado: {name} (sid={sid})")
+    print("[SOCKET] Datos de registro:")
+    print(pretty(data))
+
     emit("registered", {"status": "ok", "name": name})
 
 
@@ -107,12 +127,71 @@ def on_register(data):
 def on_device_message(data):
     """
     Mensajes arbitrarios desde el dispositivo o cliente web.
-    Ejemplo: estados, telemetría, logs, respuestas, etc.
+    Ejemplo: estados, telemetrÃ­a, logs, respuestas, etc.
     """
     sid = request.sid
     name = names_by_sid.get(sid, "anon")
 
-    print(f"[SOCKET] device_message de {name}: {data}")
+    print(f"\nðŸ“¥ [SOCKET] device_message de '{name}' (sid={sid}):")
+    print(pretty(data))
+    print("ðŸ“¥ [SOCKET] fin mensaje\n")
+
+    socketio.emit(
+        "device_message",
+        {"from": name, "payload": data},
+        skip_sid=sid,
+    )
+
+
+
+
+
+
+@socketio.on("list_devices")
+def on_list_devices(_payload=None):
+    """
+    Devuelve al solicitante la lista de dispositivos registrados y listos.
+    """
+    sid = request.sid
+    emit("device_list", {"devices": list(devices_by_name.keys())}, room=sid)
+
+
+@socketio.on("send_command")
+def on_send_command(data):
+    """
+    Permite que, por ejemplo, el cliente web solicite el envio de un comando
+    hacia otro dispositivo registrado mediante {"target": "...", "payload": {...}}.
+    """
+    sid = request.sid
+    sender = names_by_sid.get(sid, "anon")
+
+    target = (data or {}).get("target")
+    payload = (data or {}).get("payload")
+
+    if not target or payload is None:
+        emit("error", {"error": "Falta 'target' o 'payload'"}, room=sid)
+        return
+
+    target_sid = devices_by_name.get(target)
+    if not target_sid:
+        emit("error", {"error": f"Dispositivo '{target}' no conectado"}, room=sid)
+        return
+
+    print(f"\n[SOCKET] '{sender}' envia comando a '{target}':")
+    print(pretty(payload))
+    print("[SOCKET] fin comando\n")
+
+    socketio.emit("command", payload, room=target_sid)
+
+    emit("command_sent", {"target": target, "payload": payload}, room=sid)
+
+@socketio.on("error")
+def on_error_event(err):
+    sid = request.sid
+    name = names_by_sid.get(sid, "anon")
+    print(f"\n[SOCKET] Error reportado por '{name}' (sid={sid}):")
+    print(pretty(err))
+    print()
 
 
 # ----------------------------
