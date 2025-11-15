@@ -7,7 +7,7 @@ class SocketService {
   constructor() {
     this.socket = null;
     this.connected = false;
-    this.deviceName = 'OmniCar-UI'; // Changed from OmniCar-01
+    this.deviceName = 'ControlPanel';
   }
 
   connect() {
@@ -27,23 +27,6 @@ class SocketService {
       
       // Registrar como operador
       this.socket.emit('register', { role: 'operator', base_name: this.deviceName });
-    });
-
-    this.socket.on('registered', (data) => {
-      console.log('Dispositivo registrado:', data);
-    });
-
-    this.socket.on('disconnect', () => {
-      console.log('Desconectado del servidor');
-      this.connected = false;
-    });
-
-    this.socket.on('command', (data) => {
-      console.log('Comando recibido del servidor:', data);
-    });
-
-    this.socket.on('error', (error) => {
-      console.error('Error de socket:', error);
     });
 
     return this.socket;
@@ -89,21 +72,6 @@ class SocketService {
     this.socket.emit('list_devices');
   }
 
-  // Enviar telemetría (esto puede que no sea necesario para un operador)
-  sendTelemetry(telemetry) {
-    if (!this.socket || !this.connected) {
-      console.warn('Socket no conectado');
-      return;
-    }
-
-    const payload = {
-      type: 'telemetry',
-      data: telemetry
-    };
-
-    this.socket.emit('device_message', payload);
-  }
-
   // Suscribirse a eventos personalizados
   on(event, callback) {
     if (this.socket) {
@@ -128,4 +96,3 @@ class SocketService {
 const socketService = new SocketService();
 
 export default socketService;
-

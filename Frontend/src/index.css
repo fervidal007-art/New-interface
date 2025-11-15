@@ -79,6 +79,28 @@ body {
   text-shadow: 0 0 5px rgba(0,0,0,0.2);
 }
 
+.header-logs-btn {
+  padding: 0.6rem 1.5rem;
+  border-radius: 999px;
+  border: none;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s, opacity 0.2s;
+  box-shadow: 0 10px 20px rgba(99, 102, 241, 0.3);
+}
+
+.header-logs-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.header-logs-btn:not(:disabled):hover {
+  transform: translateY(-2px);
+}
+
 .logo-container {
   display: flex;
   align-items: center;
@@ -248,13 +270,18 @@ body {
   overflow: hidden;
 }
 
-.left-panel,
-.right-panel {
+.left-panel {
   display: flex;
   flex-direction: column;
   gap: 2rem;
   align-items: center;
-  z-index: 10;
+}
+
+.right-panel {
+  display: flex;
+  flex: 0 0 280px;
+  align-items: center;
+  justify-content: center;
 }
 
 .center-panel {
@@ -263,6 +290,127 @@ body {
   align-items: center;
   justify-content: center;
   position: relative;
+}
+
+.conversation-panel {
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 16px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 400px;
+}
+
+.conversation-header {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.conversation-title {
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+.conversation-device {
+  font-weight: 600;
+}
+
+.conversation-log {
+  flex: 1;
+  border-radius: 12px;
+  border: 1px solid rgba(0,0,0,0.08);
+  padding: 10px;
+  background: rgba(248, 250, 252, 0.9);
+  overflow-y: auto;
+  font-size: 0.82rem;
+}
+
+.conversation-entry {
+  padding: 10px;
+  border-radius: 10px;
+  margin-bottom: 10px;
+  background: rgba(0,0,0,0.03);
+  border: 1px solid transparent;
+}
+
+.conversation-entry.from-device {
+  border-color: rgba(16, 185, 129, 0.25);
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.conversation-entry.from-operator {
+  border-color: rgba(59, 130, 246, 0.25);
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.conversation-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 0.7rem;
+  color: #6b7280;
+  margin-bottom: 4px;
+}
+
+.conversation-origin {
+  font-style: italic;
+}
+
+.conversation-body {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  word-break: break-word;
+}
+
+.conversation-empty {
+  text-align: center;
+  color: #6b7280;
+  padding: 20px;
+  font-size: 0.85rem;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.modal-content {
+  background: #fff;
+  border-radius: 20px;
+  width: min(900px, 90vw);
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.25);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.modal-close {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 50%;
+  transition: background 0.2s;
+}
+
+.modal-close:hover {
+  background: rgba(0,0,0,0.06);
 }
 
 /* Compass */

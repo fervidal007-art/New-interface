@@ -4,7 +4,7 @@ import ConnectionStatus from './ConnectionStatus';
 import DeviceSelector from './DeviceSelector';
 import logoITESO from '../Public/Logo-ITESO-Principal-SinFondo.png';
 
-function Header({ batteryLevel, isConnected, onConnect, devices, selectedDevice, onDeviceChange, onRefresh }) {
+function Header({ batteryLevel, isConnected, onConnect, devices, selectedDevice, onDeviceChange, onRefresh, onOpenLogs, logsDisabled }) {
   const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
@@ -19,6 +19,13 @@ function Header({ batteryLevel, isConnected, onConnect, devices, selectedDevice,
     <div className="header">
       <div className="header-left">
         <ConnectionStatus isConnected={isConnected} onConnect={onConnect} />
+        <button
+          className="header-logs-btn"
+          onClick={onOpenLogs}
+          disabled={logsDisabled}
+        >
+          Ver Logs
+        </button>
       </div>
 
       <div className="header-center">
@@ -48,7 +55,6 @@ function Header({ batteryLevel, isConnected, onConnect, devices, selectedDevice,
 }
 
 export default Header;
-
 
 
 

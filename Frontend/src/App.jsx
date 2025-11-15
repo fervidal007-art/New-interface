@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Move, RotateCw } from 'lucide-react';
 import Header from './components/Header';
 import SpeedDisplay from './components/SpeedDisplay';
@@ -6,12 +6,13 @@ import Joystick from './components/Joystick';
 import CarVisualization from './components/CarVisualization';
 import ControlPanel from './components/ControlPanel';
 import Stats from './components/Stats';
+import LogsModal from './components/LogsModal';
 import socketService from './utils/socket';
 
 function App() {
   const [speed, setSpeed] = useState(0);
   const [direction, setDirection] = useState(45);
-  const [gpsCoords, setGpsCoords] = useState({ lat: 41.40338, lng: 2.17403 });
+  const [gpsCoords] = useState({ lat: 41.40338, lng: 2.17403 });
   const [batteryLevel, setBatteryLevel] = useState(55);
   const [mode, setMode] = useState('manual');
   const [movementInput, setMovementInput] = useState({ x: 0, y: 0 });
@@ -19,60 +20,84 @@ function App() {
   const [isConnected, setIsConnected] = useState(false);
   const [devices, setDevices] = useState([]);
   const [selectedDevice, setSelectedDevice] = useState('');
+  const [conversations, setConversations] = useState({});
+  const [isLogsOpen, setIsLogsOpen] = useState(false);
 
-  // Initialize Socket.IO connection
+  const handleDeviceList = useCallback(
+    (data = {}) => {
+      const deviceList = Array.isArray(data.devices) ? data.devices : [];
+      setDevices(deviceList);
+
+      if (deviceList.length === 0) {
+        setSelectedDevice('');
+        return;
+      }
+
+      if (!deviceList.includes(selectedDevice)) {
+        setSelectedDevice(deviceList[0]);
+      }
+    },
+    [selectedDevice]
+  );
+
+  const handleConversationMessage = useCallback((msg = {}) => {
+    const { device, direction, payload, ts, origin } = msg;
+    if (!device) {
+      return;
+    }
+
+    setConversations(prev => {
+      const history = prev[device] ? [...prev[device]] : [];
+      history.push({
+        device,
+        direction,
+        payload,
+        origin,
+        ts: typeof ts === 'number' ? ts * 1000 : Date.now(),
+      });
+      if (history.length > 250) {
+        history.shift();
+      }
+      return {
+        ...prev,
+        [device]: history,
+      };
+    });
+  }, []);
+
   useEffect(() => {
     socketService.connect();
-    
-    socketService.on('connect', () => {
+
+    const handleConnect = () => {
       setIsConnected(true);
       console.log('✅ Conectado al servidor');
       socketService.requestDeviceList();
-    });
+    };
 
-    socketService.on('disconnect', () => {
+    const handleDisconnect = () => {
       setIsConnected(false);
-      console.log('❌ Desconectado del servidor');
-    });
+      console.log('⚠️ Desconectado del servidor');
+    };
 
-    socketService.on('command', (data) => {
-      console.log('Comando recibido:', data);
-      // Aquí puedes manejar comandos del servidor
-    });
+    const handleError = (err) => {
+      console.error('Socket error:', err);
+    };
 
-    socketService.on('device_list', (data) => {
-      console.log('Device list received:', data);
-      const deviceList = data.devices || [];
-      setDevices(deviceList);
-      if (deviceList.length > 0 && !deviceList.includes(selectedDevice)) {
-        setSelectedDevice(deviceList[0]);
-      } else if (deviceList.length === 0) {
-        setSelectedDevice('');
-      }
-    });
+    socketService.on('connect', handleConnect);
+    socketService.on('disconnect', handleDisconnect);
+    socketService.on('device_list', handleDeviceList);
+    socketService.on('conversation_message', handleConversationMessage);
+    socketService.on('error', handleError);
 
     return () => {
+      socketService.off('connect', handleConnect);
+      socketService.off('disconnect', handleDisconnect);
+      socketService.off('device_list', handleDeviceList);
+      socketService.off('conversation_message', handleConversationMessage);
+      socketService.off('error', handleError);
       socketService.disconnect();
     };
-  }, []);
-
-  // Send telemetry periodically
-  useEffect(() => {
-    if (!isConnected) return;
-
-    const interval = setInterval(() => {
-      socketService.sendTelemetry({
-        speed,
-        direction,
-        gps: gpsCoords,
-        battery: batteryLevel,
-        mode,
-        timestamp: Date.now()
-      });
-    }, 1000); // Send every second
-
-    return () => clearInterval(interval);
-  }, [isConnected, speed, direction, gpsCoords, batteryLevel, mode]);
+  }, [handleDeviceList, handleConversationMessage]);
 
   const handleConnect = () => {
     console.log('Attempting to connect...');
@@ -84,40 +109,38 @@ function App() {
     socketService.requestDeviceList();
   };
 
-  // Simulate speed based on movement input
   useEffect(() => {
     const magnitude = Math.sqrt(movementInput.x ** 2 + movementInput.y ** 2);
     const maxSpeed = 82;
     setSpeed(Math.round(magnitude * maxSpeed));
   }, [movementInput]);
 
-  // Handle movement joystick
   const handleMovement = (input) => {
     setMovementInput(input);
-    
-    // Send movement commands to backend
+
     if (isConnected) {
       socketService.sendMovement(selectedDevice, input.x, input.y, rotationInput.x);
     }
   };
 
-  // Handle rotation joystick
   const handleRotation = (input) => {
     setRotationInput(input);
-    
-    // Update direction based on rotation input
+
     setDirection(prev => {
       let newDir = prev + input.x * 5;
       if (newDir < 0) newDir += 360;
       if (newDir >= 360) newDir -= 360;
       return newDir;
     });
-    
-    // Send rotation commands to backend
+
     if (isConnected) {
       socketService.sendMovement(selectedDevice, movementInput.x, movementInput.y, input.x);
     }
   };
+
+  const currentConversation = useMemo(() => {
+    return selectedDevice ? conversations[selectedDevice] || [] : [];
+  }, [conversations, selectedDevice]);
 
   return (
     <div className="app">
@@ -129,9 +152,10 @@ function App() {
         selectedDevice={selectedDevice}
         onDeviceChange={setSelectedDevice}
         onRefresh={handleRefreshDevices}
+        onOpenLogs={() => setIsLogsOpen(true)}
+        logsDisabled={!selectedDevice}
       />
 
-      {/* Stats Panel */}
       <Stats 
         movementInput={movementInput}
         rotationInput={rotationInput}
@@ -139,42 +163,44 @@ function App() {
       />
 
       <div className="main-content">
-        {/* Left side - Speed */}
         <div className="left-panel">
           <SpeedDisplay speed={speed} />
         </div>
 
-        {/* Center - Car visualization */}
         <div className="center-panel">
           <CarVisualization />
         </div>
 
-        {/* Right side - Empty for now */}
-        <div className="right-panel">
-        </div>
+        <div className="right-panel" />
       </div>
 
       <div className="joystick-row">
-        {/* Left Joystick - Movement */}
         <Joystick 
           type="movement" 
           icon={Move}
           onMove={handleMovement}
         />
 
-        {/* Control Panel */}
         <ControlPanel 
           mode={mode}
           onModeChange={setMode}
         />
 
-        {/* Right Joystick - Rotation */}
         <Joystick 
           type="rotation" 
           icon={RotateCw}
           onMove={handleRotation}
         />
       </div>
+
+      {isLogsOpen && (
+        <LogsModal
+          device={selectedDevice}
+          messages={currentConversation}
+          isConnected={isConnected}
+          onClose={() => setIsLogsOpen(false)}
+        />
+      )}
     </div>
   );
 }
