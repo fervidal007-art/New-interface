@@ -7,7 +7,7 @@ class SocketService {
   constructor() {
     this.socket = null;
     this.connected = false;
-    this.deviceName = 'OmniCar-01';
+    this.deviceName = 'OmniCar-UI'; // Changed from OmniCar-01
   }
 
   connect() {
@@ -25,8 +25,8 @@ class SocketService {
       console.log('Conectado al servidor:', this.socket.id);
       this.connected = true;
       
-      // Registrar el dispositivo
-      this.socket.emit('register', { name: this.deviceName });
+      // Registrar como operador
+      this.socket.emit('register', { role: 'operator', base_name: this.deviceName });
     });
 
     this.socket.on('registered', (data) => {
@@ -56,10 +56,14 @@ class SocketService {
     }
   }
 
-  // Enviar comandos de movimiento
-  sendMovement(x, y, rotation) {
+  // Enviar comandos de movimiento a un target específico
+  sendMovement(target, x, y, rotation) {
     if (!this.socket || !this.connected) {
       console.warn('Socket no conectado');
+      return;
+    }
+    if (!target) {
+      // console.warn('No hay un dispositivo seleccionado para enviar el comando');
       return;
     }
 
@@ -73,10 +77,19 @@ class SocketService {
       }
     };
 
-    this.socket.emit('device_message', payload);
+    this.socket.emit('send_command', { target, payload });
   }
 
-  // Enviar telemetría
+  // Solicitar la lista de dispositivos
+  requestDeviceList() {
+    if (!this.socket || !this.connected) {
+      console.warn('Socket no conectado');
+      return;
+    }
+    this.socket.emit('list_devices');
+  }
+
+  // Enviar telemetría (esto puede que no sea necesario para un operador)
   sendTelemetry(telemetry) {
     if (!this.socket || !this.connected) {
       console.warn('Socket no conectado');

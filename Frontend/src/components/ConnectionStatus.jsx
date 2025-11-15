@@ -1,6 +1,6 @@
-import { Wifi, WifiOff } from 'lucide-react';
+import { Wifi, WifiOff, Zap } from 'lucide-react';
 
-function ConnectionStatus({ isConnected }) {
+function ConnectionStatus({ isConnected, onConnect }) {
   return (
     <div className={`connection-status ${isConnected ? 'connected' : 'disconnected'}`}>
       {isConnected ? (
@@ -9,10 +9,16 @@ function ConnectionStatus({ isConnected }) {
           <span>Conectado</span>
         </>
       ) : (
-        <>
-          <WifiOff size={16} />
-          <span>Desconectado</span>
-        </>
+        <div className="disconnected-content">
+          <div className="disconnected-info">
+            <WifiOff size={16} />
+            <span>Desconectado</span>
+          </div>
+          <button onClick={onConnect} className="connect-btn">
+            <Zap size={14} />
+            Encender
+          </button>
+        </div>
       )}
     </div>
   );

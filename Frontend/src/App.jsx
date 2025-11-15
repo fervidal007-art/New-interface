@@ -17,6 +17,8 @@ function App() {
   const [movementInput, setMovementInput] = useState({ x: 0, y: 0 });
   const [rotationInput, setRotationInput] = useState({ x: 0, y: 0 });
   const [isConnected, setIsConnected] = useState(false);
+  const [devices, setDevices] = useState([]);
+  const [selectedDevice, setSelectedDevice] = useState('');
 
   // Initialize Socket.IO connection
   useEffect(() => {
@@ -25,6 +27,7 @@ function App() {
     socketService.on('connect', () => {
       setIsConnected(true);
       console.log('✅ Conectado al servidor');
+      socketService.requestDeviceList();
     });
 
     socketService.on('disconnect', () => {
@@ -35,6 +38,17 @@ function App() {
     socketService.on('command', (data) => {
       console.log('Comando recibido:', data);
       // Aquí puedes manejar comandos del servidor
+    });
+
+    socketService.on('device_list', (data) => {
+      console.log('Device list received:', data);
+      const deviceList = data.devices || [];
+      setDevices(deviceList);
+      if (deviceList.length > 0 && !deviceList.includes(selectedDevice)) {
+        setSelectedDevice(deviceList[0]);
+      } else if (deviceList.length === 0) {
+        setSelectedDevice('');
+      }
     });
 
     return () => {
@@ -60,6 +74,15 @@ function App() {
     return () => clearInterval(interval);
   }, [isConnected, speed, direction, gpsCoords, batteryLevel, mode]);
 
+  const handleConnect = () => {
+    console.log('Attempting to connect...');
+    socketService.connect();
+  };
+
+  const handleRefreshDevices = () => {
+    console.log('Requesting device list...');
+    socketService.requestDeviceList();
+  };
 
   // Simulate speed based on movement input
   useEffect(() => {
@@ -74,7 +97,7 @@ function App() {
     
     // Send movement commands to backend
     if (isConnected) {
-      socketService.sendMovement(input.x, input.y, rotationInput.x);
+      socketService.sendMovement(selectedDevice, input.x, input.y, rotationInput.x);
     }
   };
 
@@ -92,7 +115,7 @@ function App() {
     
     // Send rotation commands to backend
     if (isConnected) {
-      socketService.sendMovement(movementInput.x, movementInput.y, input.x);
+      socketService.sendMovement(selectedDevice, movementInput.x, movementInput.y, input.x);
     }
   };
 
@@ -101,6 +124,11 @@ function App() {
       <Header 
         batteryLevel={batteryLevel}
         isConnected={isConnected}
+        onConnect={handleConnect}
+        devices={devices}
+        selectedDevice={selectedDevice}
+        onDeviceChange={setSelectedDevice}
+        onRefresh={handleRefreshDevices}
       />
 
       {/* Stats Panel */}

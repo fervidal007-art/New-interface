@@ -1,9 +1,10 @@
 import { Battery, Clock } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import ConnectionStatus from './ConnectionStatus';
+import DeviceSelector from './DeviceSelector';
 import logoITESO from '../Public/Logo-ITESO-Principal-SinFondo.png';
 
-function Header({ batteryLevel, isConnected }) {
+function Header({ batteryLevel, isConnected, onConnect, devices, selectedDevice, onDeviceChange, onRefresh }) {
   const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
@@ -17,7 +18,16 @@ function Header({ batteryLevel, isConnected }) {
   return (
     <div className="header">
       <div className="header-left">
-        <ConnectionStatus isConnected={isConnected} />
+        <ConnectionStatus isConnected={isConnected} onConnect={onConnect} />
+      </div>
+
+      <div className="header-center">
+        <DeviceSelector 
+          devices={devices}
+          selectedDevice={selectedDevice}
+          onDeviceChange={onDeviceChange}
+          onRefresh={onRefresh}
+        />
       </div>
 
       <div className="header-right">
@@ -38,4 +48,13 @@ function Header({ batteryLevel, isConnected }) {
 }
 
 export default Header;
+
+
+
+
+
+
+
+
+
 

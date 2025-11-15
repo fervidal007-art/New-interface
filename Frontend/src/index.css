@@ -13,7 +13,12 @@
 
 body {
   margin: 0;
-  background: linear-gradient(135deg, #f5f7fa 0%, #e8eef3 100%);
+  background-color: #0d1117;
+  background-image:
+    radial-gradient(at 10% 20%, hsla(214,75%,45%,0.3) 0px, transparent 50%),
+    radial-gradient(at 80% 20%, hsla(286,75%,45%,0.2) 0px, transparent 50%),
+    radial-gradient(at 80% 80%, hsla(340,75%,45%,0.2) 0px, transparent 50%),
+    radial-gradient(at 10% 80%, hsla(190,75%,45%,0.2) 0px, transparent 50%);
   overflow: hidden;
   height: 100vh;
   position: fixed;
@@ -32,7 +37,7 @@ body {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(to bottom, #f0f4f8 0%, #dce6f0 100%);
+  background: transparent;
   position: relative;
   overflow: hidden;
   touch-action: pan-x pan-y;
@@ -45,9 +50,11 @@ body {
   justify-content: space-between;
   align-items: center;
   padding: 1rem 2rem;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(10px);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: none;
 }
 
 .header-left,
@@ -66,9 +73,10 @@ body {
   display: flex;
   align-items: center;
   gap: 0.4rem;
-  color: #333;
+  color: #f0f0f0;
   font-size: 0.9rem;
   font-weight: 500;
+  text-shadow: 0 0 5px rgba(0,0,0,0.2);
 }
 
 .logo-container {
@@ -76,13 +84,67 @@ body {
   align-items: center;
   margin-left: 1rem;
   padding-left: 1rem;
-  border-left: 1px solid rgba(0, 0, 0, 0.1);
+  border-left: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .iteso-logo {
   height: 40px;
   width: auto;
   object-fit: contain;
+}
+
+/* Device Selector */
+.device-selector-container {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.device-select {
+  background: rgba(255, 255, 255, 0.1);
+  color: #f0f0f0;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  -moz-appearance: none;
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%23f0f0f0' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' d='M8 1a.5.5 0 0 1 .5.5v11.793l3.146-3.147a.5.5 0 0 1 .708.708l-4 4a.5.5 0 0 1-.708 0l-4-4a.5.5 0 0 1 .708-.708L7.5 13.293V1.5A.5.5 0 0 1 8 1z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.7rem top 50%;
+  background-size: 0.8em auto;
+  min-width: 180px;
+}
+
+.device-select:disabled {
+  opacity: 0.6;
+}
+
+.device-select option {
+  background: #0d1117;
+  color: #f0f0f0;
+}
+
+.refresh-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #f0f0f0;
+  border-radius: 8px;
+  width: 2.25rem;
+  height: 2.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.refresh-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: #a78bfa;
 }
 
 .connection-status {
@@ -97,14 +159,50 @@ body {
 }
 
 .connection-status.connected {
-  background: #dcfce7;
-  color: #16a34a;
+  background: rgba(4, 120, 87, 0.5);
+  color: #a7f3d0;
+  border: 1px solid rgba(167, 243, 208, 0.3);
   animation: pulse-green 2s infinite;
 }
 
 .connection-status.disconnected {
-  background: #fee2e2;
-  color: #dc2626;
+  background: rgba(185, 28, 28, 0.5);
+  color: #fecaca;
+  border: 1px solid rgba(254, 202, 202, 0.3);
+  padding: 0.25rem 0.25rem 0.25rem 1rem;
+}
+
+.disconnected-content {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.disconnected-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.connect-btn {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fecaca;
+  border: 1px solid rgba(254, 202, 202, 0.5);
+  border-radius: 6px;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  transition: all 0.2s ease;
+}
+
+.connect-btn:hover {
+  background: #dc2626;
+  color: #fff;
+  border-color: #dc2626;
 }
 
 @keyframes pulse-green {
@@ -206,23 +304,28 @@ body {
 /* Speed Display */
 .speed-display {
   text-align: center;
-  background: white;
-  padding: 2rem 3rem;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 20px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+  width: 12rem;
+  height: 12rem;
 }
 
 .speed-value {
   font-size: 5rem;
   font-weight: 700;
-  color: #333;
+  color: #ffffff;
   line-height: 1;
+  text-shadow: 0 2px 10px rgba(0,0,0,0.2);
 }
 
 .speed-unit {
   font-size: 1.2rem;
   font-weight: 600;
-  color: #666;
+  color: #e0e0e0;
   margin-top: 0.5rem;
 }
 
@@ -278,9 +381,9 @@ body {
 }
 
 .car-icon {
-  color: #1e293b;
+  color: #ffffff;
   z-index: 5;
-  filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.15));
+  filter: drop-shadow(0 5px 15px rgba(0, 0, 0, 0.2));
 }
 
 .destination-flag {
@@ -342,7 +445,7 @@ body {
   top: 0;
   bottom: 0;
   width: 1px;
-  background: rgba(0, 0, 0, 0.03);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 /* Distance Panel */
@@ -400,7 +503,10 @@ body {
 .joystick-outer {
   width: 180px;
   height: 180px;
-  background: white;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -422,7 +528,7 @@ body {
 
 .dir-indicator {
   position: absolute;
-  color: rgba(0, 0, 0, 0.15);
+  color: rgba(255, 255, 255, 0.2);
 }
 
 .dir-indicator.up { top: 15px; left: 50%; transform: translateX(-50%); }
@@ -549,40 +655,45 @@ body {
 
 .text-btn {
   padding: 0.8rem 1.5rem;
-  background: white;
-  border: 2px solid #e5e7eb;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 10px;
   font-weight: 600;
   font-size: 0.9rem;
-  color: #333;
+  color: #f0f0f0;
   cursor: pointer;
   transition: all 0.2s;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
 }
 
 .text-btn:hover {
-  border-color: #6366f1;
-  color: #6366f1;
+  border-color: #a78bfa;
+  color: #ddd;
+  background: rgba(167, 139, 250, 0.2);
   transform: translateY(-2px);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
 }
 
 .mode-btn {
   padding: 0.8rem 1.8rem;
-  background: white;
-  border: 2px solid #e5e7eb;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 10px;
   font-weight: 700;
   font-size: 0.9rem;
-  color: #666;
+  color: #d1d5db;
   cursor: pointer;
   transition: all 0.2s;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
 }
 
 .mode-btn:hover {
-  border-color: #8b5cf6;
-  color: #8b5cf6;
+  border-color: #a78bfa;
+  color: #fff;
   transform: translateY(-2px);
 }
 
@@ -631,10 +742,12 @@ body {
 }
 
 .stat-card {
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(10px);
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
   padding: 1rem;
   border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
   display: flex;
   gap: 0.8rem;
@@ -663,7 +776,7 @@ body {
 
 .stat-label {
   font-size: 0.75rem;
-  color: #666;
+  color: #9ca3af;
   font-weight: 600;
   text-transform: uppercase;
 }
@@ -671,7 +784,7 @@ body {
 .stat-value {
   font-size: 1.1rem;
   font-weight: 700;
-  color: #333;
+  color: #f3f4f6;
   font-variant-numeric: tabular-nums;
 }
 
@@ -684,7 +797,7 @@ body {
 .stat-values span {
   font-size: 0.9rem;
   font-weight: 600;
-  color: #444;
+  color: #d1d5db;
   font-variant-numeric: tabular-nums;
 }
 

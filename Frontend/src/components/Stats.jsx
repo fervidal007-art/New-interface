@@ -45,3 +45,4 @@ function Stats({ movementInput, rotationInput, speed }) {
 
 export default Stats;
 
+
