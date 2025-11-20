@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Move, RotateCw } from 'lucide-react';
 import Header from './components/Header';
 import SpeedDisplay from './components/SpeedDisplay';
@@ -17,6 +17,10 @@ function App() {
   const [mode, setMode] = useState('manual');
   const [movementInput, setMovementInput] = useState({ x: 0, y: 0 });
   const [rotationInput, setRotationInput] = useState({ x: 0, y: 0 });
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [path, setPath] = useState([{ x: 0, y: 0, t: Date.now() }]);
+  const [movementHistory, setMovementHistory] = useState([]);
+  const [isReturning, setIsReturning] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [devices, setDevices] = useState([]);
   const [selectedDevice, setSelectedDevice] = useState('');
@@ -115,7 +119,10 @@ function App() {
     setSpeed(Math.round(magnitude * maxSpeed));
   }, [movementInput]);
 
+  const COMMAND_THRESHOLD = 0.02;
+
   const handleMovement = (input) => {
+    if (isReturning) return;
     setMovementInput(input);
 
     if (isConnected) {
@@ -124,6 +131,7 @@ function App() {
   };
 
   const handleRotation = (input) => {
+    if (isReturning) return;
     setRotationInput(input);
 
     setDirection(prev => {
@@ -141,6 +149,149 @@ function App() {
   const currentConversation = useMemo(() => {
     return selectedDevice ? conversations[selectedDevice] || [] : [];
   }, [conversations, selectedDevice]);
+
+  const movementRef = useRef(movementInput);
+  const rotationRef = useRef(rotationInput);
+  const positionRef = useRef(position);
+  const returningRef = useRef(isReturning);
+  useEffect(() => {
+    movementRef.current = movementInput;
+  }, [movementInput]);
+
+  useEffect(() => {
+    rotationRef.current = rotationInput;
+  }, [rotationInput]);
+
+  useEffect(() => {
+    positionRef.current = position;
+  }, [position]);
+
+  useEffect(() => {
+    returningRef.current = isReturning;
+  }, [isReturning]);
+
+  useEffect(() => {
+    let animationId;
+    let last = performance.now();
+    const SPEED = 150; // px por segundo a potencia maxima
+
+    const step = (timestamp) => {
+      const dt = (timestamp - last) / 1000;
+      last = timestamp;
+      const { x, y } = movementRef.current;
+      const magnitude = Math.hypot(x, y);
+
+      if (!returningRef.current) {
+        const startPos = positionRef.current;
+        let nextPos = startPos;
+
+        if (Math.abs(x) > 0.001 || Math.abs(y) > 0.001) {
+          nextPos = {
+            x: startPos.x + x * SPEED * dt,
+            y: startPos.y - y * SPEED * dt,
+          };
+          positionRef.current = nextPos;
+          setPosition(nextPos);
+        }
+
+        if (magnitude > COMMAND_THRESHOLD) {
+          const entry = {
+            x,
+            y,
+            rotation: rotationRef.current,
+            duration: Math.max(16, dt * 1000),
+            start: startPos,
+            end: nextPos,
+          };
+          setMovementHistory((prev) => {
+            const next = [...prev, entry];
+            if (next.length > 2000) next.shift();
+            return next;
+          });
+        }
+      }
+
+      animationId = requestAnimationFrame(step);
+    };
+
+    animationId = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(animationId);
+  }, []);
+
+  useEffect(() => {
+    if (isReturning) return;
+    setPath((prev) => {
+      const last = prev[prev.length - 1];
+      if (last && Math.abs(last.x - position.x) < 0.1 && Math.abs(last.y - position.y) < 0.1) {
+        return prev;
+      }
+      const next = [...prev, { ...position, t: Date.now() }];
+      if (next.length > 2000) {
+        next.shift();
+      }
+      return next;
+    });
+  }, [position, isReturning]);
+
+  const handleReturnToOrigin = useCallback(async () => {
+    if (!movementHistory.length || !socketService.isConnected() || !selectedDevice || isReturning) {
+      return;
+    }
+    setIsReturning(true);
+    setMovementInput({ x: 0, y: 0 });
+    setRotationInput({ x: 0, y: 0 });
+    movementRef.current = { x: 0, y: 0 };
+
+    const historySnapshot = [...movementHistory].reverse();
+    const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    let cancelled = false;
+
+    for (let i = 0; i < historySnapshot.length; i += 1) {
+      const cmd = historySnapshot[i];
+      if (!socketService.isConnected()) {
+        cancelled = true;
+        break;
+      }
+
+      const duration = Math.max(16, cmd.duration ?? 16);
+      const start = cmd.end;
+      const target = cmd.start;
+
+      socketService.sendMovement(selectedDevice, -cmd.x, -cmd.y, -cmd.rotation);
+
+      await Promise.all([
+        delay(duration),
+        new Promise((resolve) => {
+          const startTime = performance.now();
+          const animate = (now) => {
+            if (cancelled) {
+              resolve();
+              return;
+            }
+            const progress = duration ? Math.min(1, (now - startTime) / duration) : 1;
+            setPosition({
+              x: start.x + (target.x - start.x) * progress,
+              y: start.y + (target.y - start.y) * progress,
+            });
+            if (progress < 1) {
+              requestAnimationFrame(animate);
+            } else {
+              setPath((prev) => (prev.length > 1 ? prev.slice(0, -1) : prev));
+              resolve();
+            }
+          };
+          requestAnimationFrame(animate);
+        }),
+      ]);
+    }
+
+    if (!cancelled) {
+      setMovementHistory([]);
+      setPosition({ x: 0, y: 0 });
+      setPath([{ x: 0, y: 0, t: Date.now() }]);
+    }
+    setIsReturning(false);
+  }, [movementHistory, selectedDevice, isReturning, isConnected]);
 
   return (
     <div className="app">
@@ -168,7 +319,14 @@ function App() {
         </div>
 
         <div className="center-panel">
-          <CarVisualization />
+          <CarVisualization position={position} path={path} />
+          <button
+            className="return-button"
+            disabled={!movementHistory.length || !selectedDevice || isReturning || !isConnected}
+            onClick={handleReturnToOrigin}
+          >
+            {isReturning ? 'Retornando' : 'Retorno'}
+          </button>
         </div>
 
         <div className="right-panel" />
