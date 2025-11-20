@@ -1,6 +1,6 @@
 import { io } from 'socket.io-client';
 
-// Configuración del servidor backend
+// Configuracion del servidor backend
 const BACKEND_URL = 'http://localhost:5000';
 
 class SocketService {
@@ -12,7 +12,7 @@ class SocketService {
 
   connect() {
     if (this.socket && this.connected) {
-      console.log('Socket ya está conectado');
+      console.log('Socket ya esta conectado');
       return this.socket;
     }
 
@@ -24,7 +24,7 @@ class SocketService {
     this.socket.on('connect', () => {
       console.log('Conectado al servidor:', this.socket.id);
       this.connected = true;
-      
+
       // Registrar como operador
       this.socket.emit('register', { role: 'operator', base_name: this.deviceName });
     });
@@ -39,28 +39,42 @@ class SocketService {
     }
   }
 
-  // Enviar comandos de movimiento a un target específico
+  // Enviar comandos de movimiento a un target especifico
   sendMovement(target, x, y, rotation) {
     if (!this.socket || !this.connected) {
       console.warn('Socket no conectado');
       return;
     }
     if (!target) {
-      // console.warn('No hay un dispositivo seleccionado para enviar el comando');
       return;
     }
 
     const payload = {
       type: 'movement',
       data: {
-        x: x,
-        y: y,
-        rotation: rotation,
-        timestamp: Date.now()
-      }
+        x,
+        y,
+        rotation,
+        timestamp: Date.now(),
+      },
     };
 
     this.socket.emit('send_command', { target, payload });
+  }
+
+  sendStop(target) {
+    if (!this.socket || !this.connected) {
+      console.warn('Socket no conectado');
+      return;
+    }
+    if (!target) {
+      return;
+    }
+
+    this.socket.emit('send_command', {
+      target,
+      payload: { type: 'stop' },
+    });
   }
 
   // Solicitar la lista de dispositivos
@@ -86,7 +100,7 @@ class SocketService {
     }
   }
 
-  // Obtener estado de conexión
+  // Obtener estado de conexion
   isConnected() {
     return this.connected;
   }

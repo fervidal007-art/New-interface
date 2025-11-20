@@ -4,7 +4,7 @@ import ConnectionStatus from './ConnectionStatus';
 import DeviceSelector from './DeviceSelector';
 import logoITESO from '../Public/Logo-ITESO-Principal-SinFondo.png';
 
-function Header({ batteryLevel, isConnected, onConnect, devices, selectedDevice, onDeviceChange, onRefresh, onOpenLogs, logsDisabled }) {
+function Header({ batteryLevel, batteryVoltage = 0, isConnected, onConnect, devices, selectedDevice, onDeviceChange, onRefresh, onOpenLogs, logsDisabled }) {
   const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
@@ -14,6 +14,8 @@ function Header({ batteryLevel, isConnected, onConnect, devices, selectedDevice,
 
     return () => clearInterval(timer);
   }, []);
+
+  const voltageText = Number.isFinite(batteryVoltage) ? batteryVoltage.toFixed(1) : '0.0';
 
   return (
     <div className="header">
@@ -44,7 +46,7 @@ function Header({ batteryLevel, isConnected, onConnect, devices, selectedDevice,
         </div>
         <div className="status-item">
           <Battery size={18} />
-          <span>{batteryLevel}% ({Math.floor(batteryLevel / 25)}h {Math.floor((batteryLevel % 25) * 2.4)}m)</span>
+          <span>{batteryLevel}% ({voltageText} V)</span>
         </div>
         <div className="logo-container">
           <img src={logoITESO} alt="ITESO Logo" className="iteso-logo" />
@@ -55,7 +57,6 @@ function Header({ batteryLevel, isConnected, onConnect, devices, selectedDevice,
 }
 
 export default Header;
-
 
 
 

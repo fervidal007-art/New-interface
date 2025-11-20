@@ -1,18 +1,24 @@
 import { useState, useRef, useEffect } from 'react';
 import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight } from 'lucide-react';
 
-function Joystick({ type = "movement", onMove, icon: Icon }) {
+function Joystick({ type = "movement", onMove, icon: Icon, disabled = false }) {
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const containerRef = useRef(null);
 
   const handleStart = (e) => {
+    if (disabled) {
+      return;
+    }
     e.preventDefault();
     setIsDragging(true);
     handleMove(e);
   };
 
   const handleMove = (e) => {
+    if (disabled) {
+      return;
+    }
     e.preventDefault();
     if (!containerRef.current) return;
 
@@ -80,10 +86,16 @@ function Joystick({ type = "movement", onMove, icon: Icon }) {
     }
   }, [isDragging]);
 
+  useEffect(() => {
+    if (disabled) {
+      handleEnd();
+    }
+  }, [disabled]);
+
   return (
-    <div className="joystick-container">
+    <div className={`joystick-container ${disabled ? 'joystick-disabled' : ''}`}>
       <div 
-        className="joystick-outer" 
+        className={`joystick-outer ${disabled ? 'disabled' : ''}`} 
         ref={containerRef}
         onMouseDown={handleStart}
         onTouchStart={handleStart}
@@ -97,7 +109,7 @@ function Joystick({ type = "movement", onMove, icon: Icon }) {
         </div>
         
         <div 
-          className="joystick-inner"
+          className={`joystick-inner ${disabled ? 'disabled' : ''}`}
           style={{
             transform: `translate(${position.x}px, ${position.y}px)`
           }}
@@ -110,4 +122,3 @@ function Joystick({ type = "movement", onMove, icon: Icon }) {
 }
 
 export default Joystick;
-
