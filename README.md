@@ -5,14 +5,14 @@ Sistema completo para controlar la mesa robótica RoboMesha mediante interfaz we
 ## 🏗️ Arquitectura
 
 ```
-Frontend (React + Vite)  ←→  Backend (Python + Flask-SocketIO)  ←→  Motores I2C
+Frontend (React + Vite)  ←→  Backend (FastAPI + Socket.IO)  ←→  Motores I2C
     localhost:5173                   localhost:5000                  (Raspberry Pi)
 ```
 
 ## 📋 Requisitos
 
 ### Backend
-- Python 3.8 o superior
+- Python 3.11 o superior
 - pip3
 - (Opcional) smbus2 para I2C real en Raspberry Pi
 
@@ -68,7 +68,7 @@ source venv/bin/activate  # Si usas entorno virtual
 python3 server.py
 ```
 
-El backend estará disponible en `http://localhost:5000`
+El backend expone Socket.IO en `http://localhost:5000` y el endpoint `GET /health`.
 
 ### Terminal 2 - Frontend
 
@@ -80,7 +80,7 @@ cd /Users/vidal/Documents/Personal/New-interface
 O manualmente:
 ```bash
 cd Frontend
-npm run dev
+npm run dev -- --host 0.0.0.0
 ```
 
 El frontend estará disponible en `http://localhost:5173`
@@ -133,7 +133,7 @@ Para usar I2C real en Raspberry Pi:
 ```
 New-interface/
 ├── Backend/
-│   ├── server.py              # Servidor Flask-SocketIO
+│   ├── server.py              # Servidor FastAPI + Socket.IO (ASGI)
 │   ├── requirements.txt       # Dependencias Python
 │   └── README.md              # Documentación del backend
 ├── Frontend/
@@ -169,7 +169,7 @@ Los cálculos están basados en el código original de RoboMesha (`firebaseconne
 ## 🐛 Solución de Problemas
 
 ### Backend no inicia
-- Verifica que Python 3.8+ esté instalado
+- Verifica que Python 3.11+ esté instalado
 - Instala dependencias: `pip install -r Backend/requirements.txt`
 - Revisa que el puerto 5000 no esté en uso
 

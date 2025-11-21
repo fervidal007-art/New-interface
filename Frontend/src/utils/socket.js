@@ -20,7 +20,6 @@ class SocketService {
     }
 
     this.socket = io(BACKEND_URL, {
-      transports: ['polling'], // El backend (threading) usa long-polling estable
       autoConnect: true,
     });
 

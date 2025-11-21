@@ -1,18 +1,18 @@
 # Backend RoboMesha
 
-Backend en Python para controlar la mesa robótica RoboMesha mediante comunicación I2C (simulada o real).
+Backend ASGI construido con FastAPI + Socket.IO para controlar la mesa RoboMesha mediante comunicación I2C (simulada o real).
 
 ## Características
 
-- ✅ Comunicación con frontend mediante Socket.IO
+- ✅ Comunicación en tiempo real (WebSockets reales) con Socket.IO
 - ✅ Control de motores omnidireccionales mediante I2C
 - ✅ Simulación de I2C cuando el dispositivo no está conectado
 - ✅ Cálculo de PWM basado en cinemática omnidireccional
-- ✅ Auto-registro de carritos disponibles
+- ✅ API REST `/health` para monitoreo
 
 ## Requisitos
 
-- Python 3.8 o superior
+- Python 3.11+ (probado en Raspberry Pi OS Bookworm)
 - Dependencias listadas en `requirements.txt`
 
 ## Instalación
@@ -33,13 +33,17 @@ pip install -r requirements.txt
 
 ## Uso
 
-### Ejecutar el servidor
+### Ejecutar el servidor (UVicorn)
 
 ```bash
 python3 server.py
+# o
+uvicorn Backend.server:app --host 0.0.0.0 --port 5000
 ```
 
-El servidor se iniciará en `http://localhost:5000` y escuchará conexiones Socket.IO.
+El servidor expone:
+- WebSocket/Socket.IO en `ws://<ip>:5000/socket.io/`
+- Endpoint `GET /health` para monitoreo básico
 
 ### Simulación vs I2C Real
 
@@ -83,19 +87,14 @@ El backend convierte estos valores a velocidades (vx, vy, omega) y calcula los v
 
 ## Eventos Socket.IO
 
-### Eventos recibidos del cliente:
-
-- `connect`: Cliente se conecta (auto-registro como carrito)
-- `disconnect`: Cliente se desconecta
-- `register`: Registrar dispositivo con rol específico
-- `list_devices`: Solicitar lista de dispositivos disponibles
-- `send_command`: Enviar comando de movimiento
-
-### Eventos enviados al cliente:
-
-- `connected`: Confirmación de conexión con device_id
-- `device_list`: Lista de carritos disponibles `{devices: ["carrito_..."]}`
-- `device_list` (broadcast): Lista actualizada cuando hay cambios
+| Evento             | Dirección | Descripción |
+|--------------------|-----------|-------------|
+| `connect`          | Cliente→Servidor | Vincula al operador y recibe la lista de dispositivos |
+| `register`         | Cliente→Servidor | Identifica al operador (`role`, `base_name`) |
+| `list_devices`     | Cliente→Servidor | Solicita la lista de carritos disponibles |
+| `send_command`     | Cliente→Servidor | Envía comando de movimiento (`x`, `y`, `rotation`) |
+| `device_list`      | Servidor→Cliente | Lista `[carrito_hostname]` disponible |
+| `conversation_message` (pendiente) | Servidor→Cliente | Canal opcional para logs |
 
 ## Notas para Raspberry Pi
 
