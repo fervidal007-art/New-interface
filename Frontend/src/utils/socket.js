@@ -1,7 +1,10 @@
 import { io } from 'socket.io-client';
 
-// Configuración del servidor backend
-const BACKEND_URL = 'http://localhost:5000';
+// Configuración dinámica del servidor backend
+// Usa la misma IP que el frontend pero en el puerto 5000
+const protocol = window.location.protocol;
+const hostname = window.location.hostname;
+const BACKEND_URL = `${protocol}//${hostname}:5000`;
 
 class SocketService {
   constructor() {
