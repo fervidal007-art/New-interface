@@ -20,7 +20,6 @@ class SocketService {
     }
 
     this.socket = io(BACKEND_URL, {
-      transports: ['websocket'],
       autoConnect: true,
     });
 
