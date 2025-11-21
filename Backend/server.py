@@ -76,17 +76,9 @@ else:
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'robomesha-secret-key'
 
-# Intentar usar gevent si está disponible (más estable)
-try:
-    from gevent import monkey
-    monkey.patch_all()
-    async_mode = 'gevent'
-    print("[SERVIDOR] Usando modo asíncrono: gevent")
-except ImportError:
-    async_mode = 'threading'
-    print("[SERVIDOR] Usando modo asíncrono: threading")
-
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode=async_mode)
+# Usar threading mode puro (compatible con Python 3.13)
+# simple-websocket debe estar instalado
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 # Estado del servidor
 thread_lock = Lock()
