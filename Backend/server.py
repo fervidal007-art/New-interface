@@ -75,8 +75,18 @@ else:
 # Configuración Flask y SocketIO
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'robomesha-secret-key'
-# Usar threading mode para compatibilidad con Python 3.13
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+
+# Intentar usar gevent si está disponible (más estable)
+try:
+    from gevent import monkey
+    monkey.patch_all()
+    async_mode = 'gevent'
+    print("[SERVIDOR] Usando modo asíncrono: gevent")
+except ImportError:
+    async_mode = 'threading'
+    print("[SERVIDOR] Usando modo asíncrono: threading")
+
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode=async_mode)
 
 # Estado del servidor
 thread_lock = Lock()
