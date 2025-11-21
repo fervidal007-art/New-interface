@@ -54,6 +54,19 @@ npm install
 
 En una Raspberry Pi 5, necesitas ejecutar el backend y el frontend en **terminales separadas**:
 
+### Opción Automática (recomendada)
+
+```bash
+cd /Users/vidal/Documents/Personal/New-interface
+./run_all.sh
+```
+
+Este script:
+- Configura/activa el AP `ROBOMESHA` con SSID `ROBOMESHA` y clave `123456789`.
+- Crea una sesión tmux `robomesha` con dos ventanas (`run_backend.sh` y `run_frontend.sh`).
+- Se adjunta automáticamente a tmux (usa `Ctrl+B` seguido de `D` para salir y dejar todo corriendo).
+
+
 ### Terminal 1 - Backend
 
 ```bash
