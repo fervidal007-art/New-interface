@@ -1,0 +1,20 @@
+[Unit]
+Description=RoboMesha Frontend Service
+After=network.target robomesha-backend.service
+Requires=robomesha-backend.service
+
+[Service]
+Type=simple
+User=admin
+Group=admin
+WorkingDirectory=/home/admin/New-interface/Frontend
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+ExecStart=/usr/bin/npm run dev -- --host 0.0.0.0
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+

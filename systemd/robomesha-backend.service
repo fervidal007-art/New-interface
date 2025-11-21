@@ -1,0 +1,19 @@
+[Unit]
+Description=RoboMesha Backend Service
+After=network.target
+
+[Service]
+Type=simple
+User=admin
+Group=admin
+WorkingDirectory=/home/admin/New-interface
+Environment="PATH=/home/admin/New-interface/Backend/venv/bin:/usr/local/bin:/usr/bin:/bin"
+ExecStart=/home/admin/New-interface/Backend/venv/bin/python3 /home/admin/New-interface/Backend/server.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+

@@ -52,12 +52,45 @@ npm install
 
 ## 🎮 Ejecución
 
-En una Raspberry Pi 5, necesitas ejecutar el backend y el frontend en **terminales separadas**:
+En una Raspberry Pi 5, tienes tres opciones para ejecutar el sistema:
 
-### Opción Automática (recomendada)
+### Opción 1: Inicio Automático al Arrancar (Recomendado para Producción) 🚀
+
+Para que el backend y frontend se inicien automáticamente cuando la Raspberry Pi arranca:
 
 ```bash
-cd /Users/vidal/Documents/Personal/New-interface
+cd ~/New-interface
+sudo ./install_services.sh
+```
+
+Este script:
+- Instala servicios systemd (`robomesha-backend.service` y `robomesha-frontend.service`)
+- Los habilita para iniciar automáticamente al arrancar
+- Ajusta las rutas automáticamente según tu usuario
+
+**Comandos útiles:**
+```bash
+# Ver estado de los servicios
+sudo systemctl status robomesha-backend
+sudo systemctl status robomesha-frontend
+
+# Ver logs en tiempo real
+sudo journalctl -u robomesha-backend -f
+sudo journalctl -u robomesha-frontend -f
+
+# Iniciar manualmente
+sudo systemctl start robomesha-backend
+sudo systemctl start robomesha-frontend
+
+# Detener
+sudo systemctl stop robomesha-backend
+sudo systemctl stop robomesha-frontend
+```
+
+### Opción 2: Script Manual con tmux (Para Desarrollo)
+
+```bash
+cd ~/New-interface
 ./run_all.sh
 ```
 
@@ -148,6 +181,7 @@ New-interface/
 ├── Backend/
 │   ├── server.py              # Servidor FastAPI + Socket.IO (ASGI)
 │   ├── requirements.txt       # Dependencias Python
+│   ├── venv/                  # Entorno virtual Python
 │   └── README.md              # Documentación del backend
 ├── Frontend/
 │   ├── src/
@@ -157,8 +191,13 @@ New-interface/
 │   │       └── socket.js     # Cliente Socket.IO
 │   ├── package.json
 │   └── vite.config.js
+├── systemd/                   # Servicios systemd para inicio automático
+│   ├── robomesha-backend.service
+│   └── robomesha-frontend.service
 ├── run_backend.sh            # Script para ejecutar backend
 ├── run_frontend.sh           # Script para ejecutar frontend
+├── run_all.sh                # Script para iniciar todo (AP + backend + frontend)
+├── install_services.sh       # Script para instalar servicios systemd
 └── README.md                 # Este archivo
 ```
 
