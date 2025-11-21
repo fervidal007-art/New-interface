@@ -1,313 +1,290 @@
-import socket
-import threading
-import json
+"""
+Backend para control de RoboMesha
+Comunica el frontend con los motores mediante I2C (simulado o real)
+"""
+
 import time
-
-from flask import Flask, request, jsonify
+import socket
+import uuid
+import numpy as np
+import signal
+import sys
+from flask import Flask, request
 from flask_socketio import SocketIO, emit
+from threading import Lock
 
-
-# ----------------------------
-# ConfiguraciÃ³n general
-# ----------------------------
-HTTP_PORT = 5000
-
-MCAST_GRP = "239.255.100.100"
-MCAST_PORT = 50000
-
-SERVER_NAME = "FlaskBackend"  # nombre lÃ³gico del servidor para el DISCOVER
-
-
-# ----------------------------
-# Utilidades
-# ----------------------------
-
-def pretty(obj):
+# Intento importar smbus2 para I2C real, si no está disponible usamos simulación
+try:
+    import smbus2 as smbus
+    bus = smbus.SMBus(1)
+    # Probar si el bus responde
     try:
-        return json.dumps(obj, indent=2, ensure_ascii=False)
+        bus.write_quick(0x34)
+        I2C_DISPONIBLE = True
+        print("[I2C] Conexión I2C real detectada")
     except Exception:
-        return str(obj)
+        I2C_DISPONIBLE = False
+        print("[I2C] Bus I2C no responde, usando simulación")
+except ImportError:
+    I2C_DISPONIBLE = False
+    print("[I2C] smbus2 no disponible, usando simulación")
 
+# Configuración de motores (de firebaseconnect3.py)
+DIRECCION_MOTORES = 0x34
+REG_VELOCIDAD_FIJA = 0x33
 
-# ----------------------------
-# Flask + Socket.IO
-# ----------------------------
+# Parámetros cinemáticos del robot omnidireccional
+R = 0.048  # Radio de la rueda (metros)
+l1 = 0.097  # Distancia del centro al eje delantero
+l2 = 0.109  # Distancia del centro al eje trasero
+W = (1 / R) * np.array([
+    [1, 1, -(l1 + l2)],
+    [1, 1, (l1 + l2)],
+    [1, -1, (l1 + l2)],
+    [1, -1, -(l1 + l2)]
+])
+V_MAX = 250  # Velocidad máxima en mm/s
+PWM_MAX = 100  # PWM máximo (%)
+
+# Clase para simular el bus I2C
+class FakeBus:
+    def __init__(self):
+        self.last_command = None
+        
+    def write_i2c_block_data(self, addr, reg, data):
+        self.last_command = {
+            'addr': hex(addr),
+            'reg': hex(reg),
+            'data': data,
+            'timestamp': time.time()
+        }
+        # Mostrar valores PWM para cada motor
+        motor_names = ['Motor Delantero Izquierdo', 'Motor Delantero Derecho', 
+                      'Motor Trasero Derecho', 'Motor Trasero Izquierdo']
+        print(f"[SIMULACIÓN I2C] Comando enviado:")
+        print(f"  Dirección: {hex(addr)}, Registro: {hex(reg)}")
+        for i, (name, pwm) in enumerate(zip(motor_names, data)):
+            print(f"  {name}: PWM = {pwm:6.2f}")
+
+# Inicializar bus I2C (real o simulado)
+if not I2C_DISPONIBLE:
+    bus = FakeBus()
+else:
+    print(f"[I2C] Usando bus I2C real en dirección {hex(DIRECCION_MOTORES)}")
+
+# Configuración Flask y SocketIO
 app = Flask(__name__)
-app.config["SECRET_KEY"] = "dev-secret"  # cÃ¡mbialo en producciÃ³n
-socketio = SocketIO(app, cors_allowed_origins="*")  # permite file:// y otros orÃ­genes
+app.config['SECRET_KEY'] = 'robomesha-secret-key'
+# Usar threading mode para compatibilidad con Python 3.13
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
-# nombre_dispositivo -> sid
-devices_by_name = {}
-# sid -> nombre_dispositivo
-names_by_sid = {}
-roles_by_sid = {}
-operators = set()
-assigned_names = set()
+# Estado del servidor
+thread_lock = Lock()
+devices = {}  # {device_id: {role, base_name, timestamp, sid}}
+carritos_disponibles = {}  # {device_id: {hostname, timestamp, sid}}
+device_id = None
 
-
-def generate_unique_name(base: str) -> str:
-    label = (base or "Device").strip() or "Device"
-    candidate = label
-    suffix = 1
-    while candidate in assigned_names:
-        candidate = f"{label}-{suffix:02d}"
-        suffix += 1
-    assigned_names.add(candidate)
-    return candidate
-
-
-def release_name(name):
-    if name:
-        assigned_names.discard(name)
-
-
-def broadcast_device_list():
-    payload = {"devices": sorted(devices_by_name.keys())}
-    for op_sid in list(operators):
-        socketio.emit("device_list", payload, room=op_sid)
-
-
-def broadcast_conversation(device, direction, payload, origin):
-    if not device:
-        return
-    message = {
-        "device": device,
-        "direction": direction,
-        "payload": payload,
-        "origin": origin,
-        "ts": time.time(),
-    }
-    for op_sid in list(operators):
-        socketio.emit("conversation_message", message, room=op_sid)
-
-
-# ----------------------------
-# Endpoints HTTP (ejemplo)
-# ----------------------------
-
-@app.route("/ping", methods=["GET"])
-def ping():
-    return jsonify({"status": "ok", "server": SERVER_NAME})
-
-
-@app.route("/command", methods=["POST"])
-def send_command():
+def calcular_pwm(vx, vy, omega):
     """
-    POST /command
-    JSON:
-    {
-      "target": "NombreDelDispositivo",
-      "payload": {...}   # JSON arbitrario
-    }
+    Calcula los valores PWM para los 4 motores basado en la cinemática omnidireccional
+    vx: velocidad en x (mm/s)
+    vy: velocidad en y (mm/s)
+    omega: velocidad angular (rad/s)
     """
-    data = request.get_json(force=True, silent=True) or {}
-    target = data.get("target")
-    payload = data.get("payload")
+    V = np.array([vx, vy, omega])
+    velocidades = np.dot(W, V)
+    
+    # Normalizar si excede el máximo
+    factor_escala = np.max(np.abs(velocidades)) / V_MAX if np.max(np.abs(velocidades)) > V_MAX else 1
+    if factor_escala > 1:
+        velocidades /= factor_escala
+    
+    # Invertir motores 1 y 2 (según configuración original)
+    velocidades[1] *= -1
+    velocidades[2] *= -1
+    
+    # Convertir a PWM (-PWM_MAX a PWM_MAX)
+    pwm = np.clip((velocidades / V_MAX) * PWM_MAX, -PWM_MAX, PWM_MAX)
+    return [int(p) for p in pwm]
 
-    if not target or payload is None:
-        return jsonify({"error": "Falta 'target' o 'payload'"}), 400
+def enviar_pwm(vx, vy, omega):
+    """
+    Envía comandos PWM a los motores vía I2C
+    vx, vy: velocidades en mm/s
+    omega: velocidad angular en rad/s
+    """
+    pwm = calcular_pwm(vx, vy, omega)
+    try:
+        bus.write_i2c_block_data(DIRECCION_MOTORES, REG_VELOCIDAD_FIJA, pwm)
+    except Exception as e:
+        print(f"[ERROR] Error al enviar PWM: {e}")
 
-    sid = devices_by_name.get(target)
-    if not sid:
-        return jsonify({"error": f"Dispositivo '{target}' no conectado"}), 404
+def detener_motores():
+    """Detiene todos los motores"""
+    try:
+        bus.write_i2c_block_data(DIRECCION_MOTORES, REG_VELOCIDAD_FIJA, [0, 0, 0, 0])
+        print("[MOTORES] Todos los motores detenidos")
+    except Exception as e:
+        print(f"[ERROR] Error al detener motores: {e}")
 
-    print("\n[HTTP] Enviando comando al dispositivo:", target)
-    print(pretty(payload))
+def convertir_comando_frontend(x, y, rotation):
+    """
+    Convierte los valores del joystick del frontend a vx, vy, omega
+    x, y: valores normalizados de -1 a 1 del joystick de movimiento
+    rotation: valor normalizado de -1 a 1 del joystick de rotación
+    """
+    # Escalar a velocidad máxima (en mm/s)
+    vx = x * V_MAX  # Movimiento en X
+    vy = y * V_MAX  # Movimiento en Y
+    
+    # La rotación viene como valor normalizado, convertir a rad/s
+    # Máxima rotación: aproximadamente 2 rad/s
+    omega = rotation * 2.0  # rad/s
+    
+    return vx, vy, omega
 
-    # Enviamos evento 'command' solo al dispositivo objetivo
-    socketio.emit("command", payload, room=sid)
-    broadcast_conversation(target, "to_device", payload, origin="http")
-    return jsonify({"status": "sent", "target": target})
-
-
-# ----------------------------
-# Socket.IO: eventos del dispositivo / web client
-# ----------------------------
-
-@socketio.on("connect")
-def on_connect():
-    print(f"[SOCKET] Cliente conectado, sid={request.sid}")
-
-
-@socketio.on("disconnect")
-def on_disconnect():
+# Eventos Socket.IO
+@socketio.on('connect')
+def handle_connect(auth):
+    global device_id
     sid = request.sid
-    name = names_by_sid.pop(sid, None)
-    role = roles_by_sid.pop(sid, None)
-    release_name(name)
+    with thread_lock:
+        hostname = socket.gethostname()
+        device_id = f"carrito_{hostname}_{uuid.uuid4().hex[:6]}"
+        
+        # Auto-registrar como carrito disponible
+        carritos_disponibles[device_id] = {
+            'hostname': hostname,
+            'timestamp': time.time(),
+            'sid': sid
+        }
+        devices[sid] = {
+            'role': 'carrito',
+            'base_name': hostname,
+            'device_id': device_id,
+            'timestamp': time.time()
+        }
+        
+        print(f"[CONEXIÓN] Cliente conectado: {sid} - Carrito: {device_id}")
+        emit('connected', {'device_id': device_id})
+        
+        # Enviar lista actualizada de dispositivos
+        device_list = list(carritos_disponibles.keys())
+        emit('device_list', {'devices': device_list})
+        socketio.emit('device_list', {'devices': device_list})  # Broadcast a todos
 
-    if role == "device" and name:
-        devices_by_name.pop(name, None)
-        broadcast_device_list()
-        print(f"[SOCKET] Dispositivo '{name}' desconectado (sid={sid})")
-    elif role == "operator":
-        operators.discard(sid)
-        print(f"[SOCKET] Operador '{name or sid}' desconectado (sid={sid})")
+@socketio.on('disconnect')
+def handle_disconnect():
+    with thread_lock:
+        sid = request.sid
+        # Remover dispositivo de la lista
+        if sid in devices:
+            dev_info = devices[sid]
+            device_id_to_remove = dev_info.get('device_id')
+            if device_id_to_remove in carritos_disponibles:
+                del carritos_disponibles[device_id_to_remove]
+            del devices[sid]
+            print(f"[CONEXIÓN] Carrito {device_id_to_remove} desconectado")
+        else:
+            print(f"[CONEXIÓN] Cliente desconectado: {sid}")
+        
+        # Enviar lista actualizada
+        socketio.emit('device_list', {'devices': list(carritos_disponibles.keys())})
+    
+    detener_motores()
+
+@socketio.on('register')
+def handle_register(data):
+    """Registra un dispositivo (operador o carrito)"""
+    with thread_lock:
+        sid = request.sid
+        role = data.get('role', 'operator')
+        base_name = data.get('base_name', 'unknown')
+        hostname = socket.gethostname()
+        
+        # Si es un carrito, crear ID único si no existe
+        if role == 'carrito':
+            if sid not in devices or not devices[sid].get('device_id'):
+                new_device_id = f"carrito_{hostname}_{uuid.uuid4().hex[:6]}"
+            else:
+                new_device_id = devices[sid]['device_id']
+            
+            carritos_disponibles[new_device_id] = {
+                'hostname': hostname,
+                'timestamp': time.time(),
+                'sid': sid
+            }
+        else:
+            new_device_id = f"operator_{base_name}_{uuid.uuid4().hex[:6]}"
+        
+        devices[sid] = {
+            'role': role,
+            'base_name': base_name,
+            'device_id': new_device_id,
+            'timestamp': time.time()
+        }
+        
+        print(f"[REGISTRO] Dispositivo registrado: {base_name} ({role}) - ID: {new_device_id} - SID: {sid}")
+        
+        # Enviar lista actualizada de dispositivos
+        emit_device_list()
+
+@socketio.on('list_devices')
+def handle_list_devices():
+    """Solicita la lista de dispositivos disponibles"""
+    emit_device_list()
+
+def emit_device_list():
+    """Envía la lista de dispositivos a todos los clientes"""
+    with thread_lock:
+        device_list = list(carritos_disponibles.keys())
+    
+    socketio.emit('device_list', {'devices': device_list})
+    print(f"[DEVICES] Lista de dispositivos: {device_list}")
+
+@socketio.on('send_command')
+def handle_send_command(data):
+    """
+    Recibe comandos de movimiento desde el frontend
+    data: {target: device_id, payload: {type: 'movement', data: {x, y, rotation, timestamp}}}
+    """
+    target = data.get('target')
+    payload = data.get('payload', {})
+    
+    if payload.get('type') == 'movement':
+        movement_data = payload.get('data', {})
+        x = movement_data.get('x', 0)
+        y = movement_data.get('y', 0)
+        rotation = movement_data.get('rotation', 0)
+        
+        # Convertir comandos del frontend a vx, vy, omega
+        vx, vy, omega = convertir_comando_frontend(x, y, rotation)
+        
+        # Enviar a motores
+        if abs(vx) > 0.1 or abs(vy) > 0.1 or abs(rotation) > 0.1:
+            enviar_pwm(vx, vy, omega)
+            print(f"[COMANDO] vx={vx:.1f} mm/s, vy={vy:.1f} mm/s, omega={omega:.3f} rad/s")
+        else:
+            detener_motores()
     else:
-        print(f"[SOCKET] Cliente anónimo desconectado (sid={sid})")
+        print(f"[COMANDO] Tipo de comando desconocido: {payload.get('type')}")
 
+def cerrar_todo(signal_received=None, frame=None):
+    """Maneja la señal de cierre limpiamente"""
+    print("\n[CERRANDO] Cerrando servidor...")
+    detener_motores()
+    sys.exit(0)
 
-@socketio.on("register")
-def on_register(data):
-    """
-    Registro de clientes. El servidor asigna un nombre único y distingue
-    entre roles 'device' (robots/equipos) y 'operator' (la interfaz web).
-    """
-    sid = request.sid
-    payload = data or {}
-    role = payload.get("role", "device")
-    if role not in {"device", "operator"}:
-        role = "device"
+# Manejar señales de interrupción
+signal.signal(signal.SIGINT, cerrar_todo)
+signal.signal(signal.SIGTERM, cerrar_todo)
 
-    base_name = payload.get("base_name") or payload.get("name")
-    if role == "operator":
-        base_name = base_name or "Operator"
-    else:
-        base_name = base_name or "Device"
-
-    name = generate_unique_name(base_name)
-    names_by_sid[sid] = name
-    roles_by_sid[sid] = role
-
-    if role == "device":
-        devices_by_name[name] = sid
-        broadcast_device_list()
-    else:
-        operators.add(sid)
-        emit("device_list", {"devices": sorted(devices_by_name.keys())}, room=sid)
-
-    print(f"\n[SOCKET] Cliente registrado: {name} (sid={sid}, role={role})")
-    if payload:
-        print("[SOCKET] Datos de registro:")
-        print(pretty(payload))
-
-    emit("registered", {"status": "ok", "name": name, "role": role})
-
-
-@socketio.on("device_message")
-def on_device_message(data):
-    """
-    Mensajes arbitrarios desde un dispositivo hacia el servidor.
-    """
-    sid = request.sid
-    name = names_by_sid.get(sid, "anon")
-    role = roles_by_sid.get(sid)
-
-    if role != "device":
-        emit("error", {"error": "Solo los dispositivos pueden emitir 'device_message'"}, room=sid)
-        return
-
-    print(f"\n📥 [SOCKET] device_message de '{name}' (sid={sid}):")
-    print(pretty(data))
-    print("📥 [SOCKET] fin mensaje\n")
-
-    broadcast_conversation(name, "from_device", data, origin=name)
-
-
-@socketio.on("list_devices")
-def on_list_devices(_payload=None):
-    """
-    Devuelve al solicitante la lista de dispositivos registrados y listos.
-    """
-    sid = request.sid
-    if roles_by_sid.get(sid) != "operator":
-        emit("error", {"error": "Acceso denegado a list_devices"}, room=sid)
-        return
-
-    emit("device_list", {"devices": sorted(devices_by_name.keys())}, room=sid)
-
-
-@socketio.on("send_command")
-def on_send_command(data):
-    """
-    Permite que, por ejemplo, el cliente web solicite el envio de un comando
-    hacia otro dispositivo registrado mediante {"target": "...", "payload": {...}}.
-    """
-    sid = request.sid
-    sender = names_by_sid.get(sid, "anon")
-    role = roles_by_sid.get(sid)
-
-    if role != "operator":
-        emit("error", {"error": "Solo un operador puede enviar comandos"}, room=sid)
-        return
-
-    target = (data or {}).get("target")
-    payload = (data or {}).get("payload")
-
-    if not target or payload is None:
-        emit("error", {"error": "Falta 'target' o 'payload'"}, room=sid)
-        return
-
-    target_sid = devices_by_name.get(target)
-    if not target_sid:
-        emit("error", {"error": f"Dispositivo '{target}' no conectado"}, room=sid)
-        return
-
-    print(f"\n[SOCKET] '{sender}' envia comando a '{target}':")
-    print(pretty(payload))
-    print("[SOCKET] fin comando\n")
-
-    socketio.emit("command", payload, room=target_sid)
-    broadcast_conversation(target, "to_device", payload, origin=sender)
-
-    emit("command_sent", {"target": target, "payload": payload}, room=sid)
-
-
-@socketio.on("error")
-def on_error_event(err):
-    sid = request.sid
-    name = names_by_sid.get(sid, "anon")
-    print(f"\n[SOCKET] Error reportado por '{name}' (sid={sid}):")
-    print(pretty(err))
-    print()
-
-
-# ----------------------------
-# Descubrimiento UDP (multicast) para el cliente Python
-# ----------------------------
-
-def discovery_responder():
-    """
-    Escucha mensajes:
-      DISCOVER <nombre_cliente>
-    Y responde:
-      HELLO <SERVER_NAME> <HTTP_PORT>
-    """
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-
-    sock.bind(("", MCAST_PORT))
-
-    mreq = socket.inet_aton(MCAST_GRP) + socket.inet_aton("0.0.0.0")
-    sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
-
-    print(f"[DISCOVERY] Escuchando en {MCAST_GRP}:{MCAST_PORT}")
-
-    while True:
-        data, addr = sock.recvfrom(1024)
-        msg = data.decode("utf-8", errors="ignore").strip()
-
-        if msg.startswith("DISCOVER "):
-            client_name = msg.split(" ", 1)[1]
-            print(f"[DISCOVERY] Recibido DISCOVER de {client_name} desde {addr}")
-
-            response = f"HELLO {SERVER_NAME} {HTTP_PORT}"
-            sock.sendto(response.encode("utf-8"), addr)
-            print(f"[DISCOVERY] Respondido: {response} a {addr}")
-
-
-# ----------------------------
-# main
-# ----------------------------
-
-def main():
-    # Hilo para responder DISCOVER (para clientes Python)
-    t = threading.Thread(target=discovery_responder, daemon=True)
-    t.start()
-
-    print(f"[HTTP] Iniciando Flask+SocketIO en 0.0.0.0:{HTTP_PORT}")
-    socketio.run(app, host="0.0.0.0", port=HTTP_PORT)
-
-
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+    print("=" * 50)
+    print("🚀 Backend RoboMesha iniciando...")
+    print("=" * 50)
+    print(f"[I2C] Modo: {'REAL' if I2C_DISPONIBLE else 'SIMULACIÓN'}")
+    print(f"[SERVIDOR] Escuchando en http://localhost:5000")
+    print("=" * 50)
+    
+    socketio.run(app, host='0.0.0.0', port=5000, debug=False)
