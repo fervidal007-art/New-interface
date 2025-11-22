@@ -56,17 +56,23 @@ En una Raspberry Pi 5, tienes tres opciones para ejecutar el sistema:
 
 ### Opción 1: Inicio Automático al Arrancar (Recomendado para Producción) 🚀
 
-Para que el backend y frontend se inicien automáticamente cuando la Raspberry Pi arranca:
+**Para una instalación nueva (recién clonada), este script configura TODO automáticamente:**
 
 ```bash
 cd ~/New-interface
 sudo ./install_services.sh
 ```
 
-Este script:
-- Instala servicios systemd (`robomesha-backend.service` y `robomesha-frontend.service`)
-- Los habilita para iniciar automáticamente al arrancar
-- Ajusta las rutas automáticamente según tu usuario
+Este script configura completamente el sistema:
+- ✅ Crea el entorno virtual Python si no existe
+- ✅ Instala todas las dependencias del backend (`pip install -r requirements.txt`)
+- ✅ Instala todas las dependencias del frontend (`npm install`)
+- ✅ Instala servicios systemd (`robomesha-backend.service` y `robomesha-frontend.service`)
+- ✅ Los habilita para iniciar automáticamente al arrancar
+- ✅ Ajusta las rutas automáticamente según tu usuario
+- ✅ Configura permisos correctamente
+
+**Después de ejecutar este script, solo reinicia la Raspberry Pi y todo funcionará automáticamente.**
 
 **Comandos útiles:**
 ```bash
