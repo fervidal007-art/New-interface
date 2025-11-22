@@ -95,16 +95,24 @@ if ! command -v npm &> /dev/null; then
     echo "✅ Node.js instalado"
 fi
 
-# Instalar dependencias del frontend
+# Instalar dependencias del frontend (siempre limpio para evitar problemas de arquitectura)
 if [ -d "$FRONTEND_DIR" ]; then
-    if [ ! -d "$FRONTEND_DIR/node_modules" ]; then
-        echo "📥 Instalando dependencias del frontend (esto puede tardar)..."
-        su - "$CURRENT_USER" -c "cd '$FRONTEND_DIR' && npm install"
-        echo "✅ Dependencias del frontend instaladas"
-    else
-        echo "✅ node_modules ya existe, saltando instalación"
-        echo "   (Si necesitas reinstalar: cd '$FRONTEND_DIR' && npm install)"
+    # Eliminar node_modules y package-lock.json si existen para reinstalación limpia
+    # Esto evita problemas cuando se clonó desde otra arquitectura (ej: Mac -> ARM64)
+    echo "🧹 Limpiando instalación anterior del frontend (si existe)..."
+    if [ -d "$FRONTEND_DIR/node_modules" ]; then
+        su - "$CURRENT_USER" -c "rm -rf '$FRONTEND_DIR/node_modules'"
+        echo "   Eliminado node_modules anterior"
     fi
+    if [ -f "$FRONTEND_DIR/package-lock.json" ]; then
+        su - "$CURRENT_USER" -c "rm -f '$FRONTEND_DIR/package-lock.json'"
+        echo "   Eliminado package-lock.json anterior"
+    fi
+    
+    echo "📥 Instalando dependencias del frontend (esto puede tardar unos minutos)..."
+    echo "   Instalando para arquitectura ARM64 (Raspberry Pi)..."
+    su - "$CURRENT_USER" -c "cd '$FRONTEND_DIR' && npm install"
+    echo "✅ Dependencias del frontend instaladas correctamente"
 else
     echo "⚠️  Advertencia: No se encuentra el directorio Frontend/"
 fi

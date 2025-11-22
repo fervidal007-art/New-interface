@@ -246,6 +246,14 @@ Los cálculos están basados en el código original de RoboMesha (`firebaseconne
 - Reinicia la sesión o ejecuta `newgrp i2c`
 - Usa simulación si no necesitas I2C real
 
+### Frontend no inicia (Error de Rollup/ELF header)
+Si ves un error como `invalid ELF header` o problemas con `@rollup/rollup-linux-arm64-gnu`, significa que `node_modules` fue instalado en otra arquitectura (ej: Mac) y copiado a Raspberry Pi. **Solución:**
+```bash
+cd ~/New-interface
+./fix_frontend.sh
+```
+Este script limpia y reinstala las dependencias correctamente para ARM64.
+
 ## 📚 Referencias
 
 - [Repositorio Original RoboMesha](https://github.com/Aaronsep/RoboMesha.git)
