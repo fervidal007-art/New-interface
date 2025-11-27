@@ -99,6 +99,11 @@ last_command = None
 last_command_time = None
 TIMEOUT_MOTORES = 2.0  # Segundos sin comando antes de detener motores
 
+# Cola de comandos para procesamiento secuencial
+command_queue = asyncio.Queue(maxsize=5)  # Máximo 5 comandos en cola
+processing_command = False
+last_processed_command = None
+
 
 def calcular_pwm(vx, vy, omega):
     velocidades = np.dot(W, np.array([vx, vy, omega]))
@@ -194,10 +199,12 @@ async def health_check():
 async def connect(sid, environ, auth):
     print(f"[CONEXIÓN] Operador conectado: {sid}")
     await emit_device_list(target_sid=sid)
-    # Iniciar tarea de timeout si es la primera conexión
-    if not hasattr(sio, '_timeout_task_started'):
-        sio._timeout_task_started = True
+    # Iniciar tareas de fondo si es la primera conexión
+    if not hasattr(sio, '_background_tasks_started'):
+        sio._background_tasks_started = True
         asyncio.create_task(check_motor_timeout())
+        asyncio.create_task(command_processor())
+        print("[SISTEMA] Tareas de fondo iniciadas (timeout y procesador de comandos)")
 
 
 @sio.event
@@ -281,28 +288,17 @@ async def check_motor_timeout():
                     last_command = {'vx': 0, 'vy': 0, 'omega': 0, 'ts': time.time() * 1000}
 
 
-@sio.event
-async def send_command(sid, data):
-    global last_command, last_command_time
+async def process_command(sid, data):
+    """Procesa un comando de movimiento de forma secuencial"""
+    global last_command, last_command_time, last_processed_command
+    
     target = data.get('target')
     payload = data.get('payload', {})
     
     if target != CAR_DEVICE_ID:
-        await emit_log_message(
-            CAR_DEVICE_ID,
-            'from_operator',
-            {'error': f'Target desconocido: {target}'},
-            origin=f'operator_{sid[:8]}'
-        )
         return
     
     if payload.get('type') != 'movement':
-        await emit_log_message(
-            CAR_DEVICE_ID,
-            'from_operator',
-            {'error': f'Tipo no soportado: {payload.get("type")}'},
-            origin=f'operator_{sid[:8]}'
-        )
         return
     
     movement = payload.get('data', {})
@@ -311,17 +307,12 @@ async def send_command(sid, data):
     rotation_raw = movement.get('rotation', 0)
     timestamp = movement.get('timestamp', time.time() * 1000)
     
-    # Log del comando recibido
-    await emit_log_message(
-        CAR_DEVICE_ID,
-        'from_operator',
-        {
-            'type': 'movement_command',
-            'raw': {'x': x_raw, 'y': y_raw, 'rotation': rotation_raw},
-            'timestamp': timestamp
-        },
-        origin=f'operator_{sid[:8]}'
-    )
+    # Deduplicación: ignorar si es el mismo comando que el último procesado
+    command_key = (round(x_raw, 3), round(y_raw, 3), round(rotation_raw, 3))
+    if last_processed_command == command_key:
+        return  # Ignorar comando duplicado
+    
+    last_processed_command = command_key
     
     # Actualizar tiempo del último comando
     last_command_time = time.time()
@@ -355,29 +346,67 @@ async def send_command(sid, data):
         pwm = calcular_pwm(vx, vy, omega)
         enviar_pwm(vx, vy, omega)
         last_command = {'vx': vx, 'vy': vy, 'omega': omega, 'ts': timestamp}
-        
-        await emit_log_message(
-            CAR_DEVICE_ID,
-            'from_device',
-            {
-                'type': 'movement_executed',
-                'velocities': {'vx': round(vx, 1), 'vy': round(vy, 1), 'omega': round(omega, 3)},
-                'pwm': pwm
-            }
-        )
     else:
         detener_motores()
         last_command = {'vx': 0, 'vy': 0, 'omega': 0, 'ts': timestamp}
-        
-        await emit_log_message(
-            CAR_DEVICE_ID,
-            'from_device',
-            {
-                'type': 'movement_rejected',
-                'reason': 'below_threshold',
-                'velocities': {'vx': round(vx, 1), 'vy': round(vy, 1), 'omega': round(omega, 3)}
-            }
-        )
+
+
+async def command_processor():
+    """Procesa comandos de la cola de forma secuencial"""
+    global processing_command
+    while True:
+        try:
+            # Esperar comando de la cola (con timeout para no bloquear indefinidamente)
+            try:
+                sid, data = await asyncio.wait_for(command_queue.get(), timeout=1.0)
+            except asyncio.TimeoutError:
+                continue
+            
+            processing_command = True
+            await process_command(sid, data)
+            command_queue.task_done()
+            processing_command = False
+            
+            # Pequeña pausa entre comandos para no saturar I2C
+            await asyncio.sleep(0.05)  # 50ms entre comandos
+            
+        except Exception as exc:
+            print(f"[ERROR] Error procesando comando: {exc}")
+            processing_command = False
+
+
+@sio.event
+async def send_command(sid, data):
+    """Recibe comandos y los agrega a la cola para procesamiento secuencial"""
+    target = data.get('target')
+    payload = data.get('payload', {})
+    
+    if target != CAR_DEVICE_ID:
+        return
+    
+    if payload.get('type') != 'movement':
+        return
+    
+    movement = payload.get('data', {})
+    x_raw = movement.get('x', 0)
+    y_raw = movement.get('y', 0)
+    rotation_raw = movement.get('rotation', 0)
+    timestamp = movement.get('timestamp', time.time() * 1000)
+    
+    # Si la cola está llena, descartar el comando más antiguo y agregar el nuevo
+    if command_queue.full():
+        try:
+            command_queue.get_nowait()  # Descartar comando más antiguo
+            command_queue.task_done()
+        except asyncio.QueueEmpty:
+            pass
+    
+    # Agregar comando a la cola (no bloquea si está llena porque ya limpiamos)
+    try:
+        command_queue.put_nowait((sid, data))
+    except asyncio.QueueFull:
+        # Si aún está llena (raro), simplemente ignorar este comando
+        print("[WARNING] Cola de comandos saturada, descartando comando")
 
 
 def cerrar_todo(signal_name, frame):
