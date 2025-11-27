@@ -4,7 +4,7 @@ import ConnectionStatus from './ConnectionStatus';
 import DeviceSelector from './DeviceSelector';
 import logoITESO from '../Public/Logo-ITESO-Principal-SinFondo.png';
 
-function Header({ batteryLevel, isConnected, onConnect, devices, selectedDevice, onDeviceChange, onRefresh, onOpenLogs, logsDisabled }) {
+function Header({ batteryLevel, isConnected, onConnect, devices, selectedDevice, onDeviceChange, onRefresh, onOpenLogs, logsDisabled, onReset, resetDisabled }) {
   const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
@@ -25,6 +25,14 @@ function Header({ batteryLevel, isConnected, onConnect, devices, selectedDevice,
           disabled={logsDisabled}
         >
           Ver Logs
+        </button>
+        <button
+          className="header-reset-btn"
+          onClick={onReset}
+          disabled={resetDisabled}
+          title="Reiniciar sistema y detener motores"
+        >
+          🔄 Reiniciar
         </button>
       </div>
 

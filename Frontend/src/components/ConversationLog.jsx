@@ -47,7 +47,7 @@ function ConversationLog({ device, messages, isConnected }) {
                   {msg.origin && <span className="conversation-origin">{msg.origin}</span>}
                 </div>
                 <div className="conversation-body">
-                  {JSON.stringify(msg.payload)}
+                  <pre>{JSON.stringify(msg.payload, null, 2)}</pre>
                 </div>
               </div>
             );
