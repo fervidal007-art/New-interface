@@ -80,6 +80,13 @@ fastapi_app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@fastapi_app.on_event("startup")
+async def startup_event():
+    """Inicia la tarea de verificación de timeout al arrancar el servidor"""
+    asyncio.create_task(verificar_timeout_motores())
+    print("[STARTUP] Tarea de verificación de timeout iniciada")
+
 sio = socketio.AsyncServer(
     async_mode='asgi',
     cors_allowed_origins='*',
@@ -91,6 +98,8 @@ app = socketio.ASGIApp(sio, other_asgi_app=fastapi_app)
 state_lock = asyncio.Lock()
 operators = {}
 last_command = None
+last_command_time = None
+TIMEOUT_MOTORES = 0.3  # Detener motores si no hay comandos en 300ms
 
 
 def calcular_pwm(vx, vy, omega):
@@ -184,9 +193,22 @@ async def list_devices(sid):
     await emit_device_list(target_sid=sid)
 
 
+async def verificar_timeout_motores():
+    """Verifica periódicamente si los motores deben detenerse por timeout"""
+    while True:
+        await asyncio.sleep(0.1)  # Verificar cada 100ms
+        if last_command_time is not None:
+            tiempo_transcurrido = time.time() - last_command_time
+            if tiempo_transcurrido > TIMEOUT_MOTORES:
+                detener_motores()
+                global last_command
+                last_command = {'vx': 0, 'vy': 0, 'omega': 0, 'ts': None, 'timeout': True}
+                print(f"[TIMEOUT] Motores detenidos por falta de comandos ({tiempo_transcurrido:.2f}s)")
+
+
 @sio.event
 async def send_command(sid, data):
-    global last_command
+    global last_command, last_command_time
     target = data.get('target')
     payload = data.get('payload', {})
 
@@ -205,6 +227,10 @@ async def send_command(sid, data):
         movement.get('rotation', 0),
     )
 
+    # Actualizar tiempo del último comando
+    last_command_time = time.time()
+
+    # Umbral más bajo para detectar cuando el joystick está en el centro
     if abs(vx) > 0.1 or abs(vy) > 0.1 or abs(omega) > 0.05:
         enviar_pwm(vx, vy, omega)
         last_command = {'vx': vx, 'vy': vy, 'omega': omega, 'ts': movement.get('timestamp')}
@@ -233,6 +259,7 @@ if __name__ == '__main__':
     print(f"[I2C] Modo: {'REAL' if I2C_DISPONIBLE else 'SIMULACIÓN'}")
     print(f"[DEVICE] ID: {CAR_DEVICE_ID}")
     print(f"[SERVIDOR] Escuchando en http://0.0.0.0:5000")
+    print(f"[TIMEOUT] Motores se detendrán después de {TIMEOUT_MOTORES}s sin comandos")
     print("=" * 60)
 
     uvicorn.run(app, host='0.0.0.0', port=5000, log_level="info")

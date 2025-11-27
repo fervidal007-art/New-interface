@@ -5,6 +5,12 @@ function Joystick({ type = "movement", onMove, icon: Icon }) {
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const containerRef = useRef(null);
+  const onMoveRef = useRef(onMove);
+  
+  // Mantener onMove actualizado en el ref
+  useEffect(() => {
+    onMoveRef.current = onMove;
+  }, [onMove]);
 
   const handleStart = (e) => {
     e.preventDefault();
@@ -53,32 +59,57 @@ function Joystick({ type = "movement", onMove, icon: Icon }) {
     }
   };
 
-  const handleEnd = () => {
+  const handleEnd = (e) => {
+    if (e) {
+      e.preventDefault();
+    }
     setIsDragging(false);
     setPosition({ x: 0, y: 0 });
     if (onMove) {
+      // Enviar múltiples veces para asegurar que se reciba
       onMove({ x: 0, y: 0 });
+      setTimeout(() => onMove({ x: 0, y: 0 }), 10);
+      setTimeout(() => onMove({ x: 0, y: 0 }), 50);
     }
   };
 
   useEffect(() => {
     if (isDragging) {
       const moveHandler = (e) => handleMove(e);
-      const endHandler = () => handleEnd();
+      const endHandler = (e) => handleEnd(e);
 
       window.addEventListener('mousemove', moveHandler);
       window.addEventListener('mouseup', endHandler);
+      window.addEventListener('mouseleave', endHandler); // Detectar cuando el mouse sale de la ventana
       window.addEventListener('touchmove', moveHandler, { passive: false });
       window.addEventListener('touchend', endHandler);
+      window.addEventListener('touchcancel', endHandler); // Detectar cancelación de touch
 
       return () => {
         window.removeEventListener('mousemove', moveHandler);
         window.removeEventListener('mouseup', endHandler);
+        window.removeEventListener('mouseleave', endHandler);
         window.removeEventListener('touchmove', moveHandler);
         window.removeEventListener('touchend', endHandler);
+        window.removeEventListener('touchcancel', endHandler);
+        // Asegurar reset al desmontar
+        setPosition({ x: 0, y: 0 });
+        if (onMoveRef.current) {
+          onMoveRef.current({ x: 0, y: 0 });
+        }
       };
     }
   }, [isDragging]);
+
+  // Efecto separado para asegurar que el joystick vuelva al centro cuando no está arrastrando
+  useEffect(() => {
+    if (!isDragging && (position.x !== 0 || position.y !== 0)) {
+      setPosition({ x: 0, y: 0 });
+      if (onMoveRef.current) {
+        onMoveRef.current({ x: 0, y: 0 });
+      }
+    }
+  }, [isDragging, position]);
 
   return (
     <div className="joystick-container">
