@@ -1,16 +1,16 @@
 import { useState, useRef, useEffect } from 'react';
 import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight } from 'lucide-react';
 
+// Zona muerta: valores menores a esto se consideran 0
+const DEADZONE = 0.15;
+// Throttle: tiempo mínimo entre envíos de comandos (ms)
+const THROTTLE_MS = 50;
+
 function Joystick({ type = "movement", onMove, icon: Icon }) {
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const containerRef = useRef(null);
-  const onMoveRef = useRef(onMove);
-  
-  // Mantener onMove actualizado en el ref
-  useEffect(() => {
-    onMoveRef.current = onMove;
-  }, [onMove]);
+  const lastSendTime = useRef(0);
 
   const handleStart = (e) => {
     e.preventDefault();
@@ -51,65 +51,49 @@ function Joystick({ type = "movement", onMove, icon: Icon }) {
     setPosition({ x, y });
 
     // Calculate normalized values (-1 to 1)
-    const normalizedX = x / maxDistance;
-    const normalizedY = -y / maxDistance; // Invert Y axis
+    let normalizedX = x / maxDistance;
+    let normalizedY = -y / maxDistance; // Invert Y axis
 
-    if (onMove) {
+    // Aplicar zona muerta: si el valor absoluto es menor al deadzone, ponerlo en 0
+    if (Math.abs(normalizedX) < DEADZONE) normalizedX = 0;
+    if (Math.abs(normalizedY) < DEADZONE) normalizedY = 0;
+
+    // Throttling: solo enviar si ha pasado suficiente tiempo
+    const now = Date.now();
+    if (onMove && (now - lastSendTime.current) >= THROTTLE_MS) {
+      lastSendTime.current = now;
       onMove({ x: normalizedX, y: normalizedY });
     }
   };
 
-  const handleEnd = (e) => {
-    if (e) {
-      e.preventDefault();
-    }
+  const handleEnd = () => {
     setIsDragging(false);
     setPosition({ x: 0, y: 0 });
+    // Siempre enviar 0 cuando se suelta, sin throttle
     if (onMove) {
-      // Enviar múltiples veces para asegurar que se reciba
+      lastSendTime.current = Date.now();
       onMove({ x: 0, y: 0 });
-      setTimeout(() => onMove({ x: 0, y: 0 }), 10);
-      setTimeout(() => onMove({ x: 0, y: 0 }), 50);
     }
   };
 
   useEffect(() => {
     if (isDragging) {
       const moveHandler = (e) => handleMove(e);
-      const endHandler = (e) => handleEnd(e);
+      const endHandler = () => handleEnd();
 
       window.addEventListener('mousemove', moveHandler);
       window.addEventListener('mouseup', endHandler);
-      window.addEventListener('mouseleave', endHandler); // Detectar cuando el mouse sale de la ventana
       window.addEventListener('touchmove', moveHandler, { passive: false });
       window.addEventListener('touchend', endHandler);
-      window.addEventListener('touchcancel', endHandler); // Detectar cancelación de touch
 
       return () => {
         window.removeEventListener('mousemove', moveHandler);
         window.removeEventListener('mouseup', endHandler);
-        window.removeEventListener('mouseleave', endHandler);
         window.removeEventListener('touchmove', moveHandler);
         window.removeEventListener('touchend', endHandler);
-        window.removeEventListener('touchcancel', endHandler);
-        // Asegurar reset al desmontar
-        setPosition({ x: 0, y: 0 });
-        if (onMoveRef.current) {
-          onMoveRef.current({ x: 0, y: 0 });
-        }
       };
     }
   }, [isDragging]);
-
-  // Efecto separado para asegurar que el joystick vuelva al centro cuando no está arrastrando
-  useEffect(() => {
-    if (!isDragging && (position.x !== 0 || position.y !== 0)) {
-      setPosition({ x: 0, y: 0 });
-      if (onMoveRef.current) {
-        onMoveRef.current({ x: 0, y: 0 });
-      }
-    }
-  }, [isDragging, position]);
 
   return (
     <div className="joystick-container">

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Move, RotateCw } from 'lucide-react';
 import Header from './components/Header';
 import SpeedDisplay from './components/SpeedDisplay';
@@ -22,12 +22,6 @@ function App() {
   const [selectedDevice, setSelectedDevice] = useState('');
   const [conversations, setConversations] = useState({});
   const [isLogsOpen, setIsLogsOpen] = useState(false);
-  
-  // Refs para mantener valores actuales en el heartbeat sin recrear el intervalo
-  const movementInputRef = useRef(movementInput);
-  const rotationInputRef = useRef(rotationInput);
-  const selectedDeviceRef = useRef(selectedDevice);
-  const isConnectedRef = useRef(isConnected);
 
   const handleDeviceList = useCallback(
     (data = {}) => {
@@ -120,42 +114,6 @@ function App() {
     const maxSpeed = 82;
     setSpeed(Math.round(magnitude * maxSpeed));
   }, [movementInput]);
-
-  // Actualizar refs cuando cambian los valores
-  useEffect(() => {
-    movementInputRef.current = movementInput;
-  }, [movementInput]);
-
-  useEffect(() => {
-    rotationInputRef.current = rotationInput;
-  }, [rotationInput]);
-
-  useEffect(() => {
-    selectedDeviceRef.current = selectedDevice;
-  }, [selectedDevice]);
-
-  useEffect(() => {
-    isConnectedRef.current = isConnected;
-  }, [isConnected]);
-
-  // Heartbeat: enviar estado actual del joystick periódicamente para evitar que se queden trabados
-  useEffect(() => {
-    if (!isConnected || !selectedDevice) return;
-
-    const heartbeatInterval = setInterval(() => {
-      // Enviar el estado actual del joystick cada 100ms usando los refs
-      if (isConnectedRef.current && selectedDeviceRef.current) {
-        socketService.sendMovement(
-          selectedDeviceRef.current, 
-          movementInputRef.current.x, 
-          movementInputRef.current.y, 
-          rotationInputRef.current.x
-        );
-      }
-    }, 100); // Enviar cada 100ms
-
-    return () => clearInterval(heartbeatInterval);
-  }, [isConnected, selectedDevice]);
 
   const handleMovement = (input) => {
     setMovementInput(input);

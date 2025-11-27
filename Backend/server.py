@@ -33,6 +33,7 @@ except ImportError:
 
 DIRECCION_MOTORES = 0x34
 REG_VELOCIDAD_FIJA = 0x33
+REG_LEER_ENCODERS = 0x30  # Registro para leer velocidades de encoders
 
 R = 0.048
 l1 = 0.097
@@ -59,6 +60,10 @@ class FakeBus:
         print(f"  Dirección: {hex(addr)}, Registro: {hex(reg)}")
         for name, pwm in zip(motor_names, data):
             print(f"  {name}: PWM = {pwm:6.2f}")
+    
+    def read_i2c_block_data(self, addr, reg, length):
+        # Simular lectura de encoders (valores ficticios)
+        return [0] * length
 
 
 if not I2C_DISPONIBLE:
@@ -80,13 +85,6 @@ fastapi_app.add_middleware(
     allow_headers=["*"],
 )
 
-
-@fastapi_app.on_event("startup")
-async def startup_event():
-    """Inicia la tarea de verificación de timeout al arrancar el servidor"""
-    asyncio.create_task(verificar_timeout_motores())
-    print("[STARTUP] Tarea de verificación de timeout iniciada")
-
 sio = socketio.AsyncServer(
     async_mode='asgi',
     cors_allowed_origins='*',
@@ -98,8 +96,6 @@ app = socketio.ASGIApp(sio, other_asgi_app=fastapi_app)
 state_lock = asyncio.Lock()
 operators = {}
 last_command = None
-last_command_time = None
-TIMEOUT_MOTORES = 0.3  # Detener motores si no hay comandos en 300ms
 
 
 def calcular_pwm(vx, vy, omega):
@@ -129,6 +125,28 @@ def detener_motores():
         print("[MOTORES] Todos los motores detenidos")
     except Exception as exc:
         print(f"[ERROR] Error al detener motores: {exc}")
+
+
+def leer_velocidades_encoders():
+    """Lee las velocidades de los 4 encoders desde el Arduino vía I2C.
+    Retorna un array de 4 valores con las velocidades en RPM o cuentas por segundo.
+    """
+    try:
+        # Leer 16 bytes: 4 floats de 4 bytes cada uno (velocidad de cada motor)
+        data = bus.read_i2c_block_data(DIRECCION_MOTORES, REG_LEER_ENCODERS, 16)
+        
+        # Convertir bytes a floats (little-endian)
+        import struct
+        velocidades = []
+        for i in range(4):
+            bytes_motor = data[i*4:(i+1)*4]
+            velocidad = struct.unpack('<f', bytes(bytes_motor))[0]
+            velocidades.append(velocidad)
+        
+        return velocidades
+    except Exception as exc:
+        print(f"[ERROR] Error al leer encoders: {exc}")
+        return [0.0, 0.0, 0.0, 0.0]
 
 
 def convertir_comando_frontend(x, y, rotation):
@@ -193,22 +211,9 @@ async def list_devices(sid):
     await emit_device_list(target_sid=sid)
 
 
-async def verificar_timeout_motores():
-    """Verifica periódicamente si los motores deben detenerse por timeout"""
-    while True:
-        await asyncio.sleep(0.1)  # Verificar cada 100ms
-        if last_command_time is not None:
-            tiempo_transcurrido = time.time() - last_command_time
-            if tiempo_transcurrido > TIMEOUT_MOTORES:
-                detener_motores()
-                global last_command
-                last_command = {'vx': 0, 'vy': 0, 'omega': 0, 'ts': None, 'timeout': True}
-                print(f"[TIMEOUT] Motores detenidos por falta de comandos ({tiempo_transcurrido:.2f}s)")
-
-
 @sio.event
 async def send_command(sid, data):
-    global last_command, last_command_time
+    global last_command
     target = data.get('target')
     payload = data.get('payload', {})
 
@@ -221,17 +226,25 @@ async def send_command(sid, data):
         return
 
     movement = payload.get('data', {})
-    vx, vy, omega = convertir_comando_frontend(
-        movement.get('x', 0),
-        movement.get('y', 0),
-        movement.get('rotation', 0),
-    )
+    x_raw = movement.get('x', 0)
+    y_raw = movement.get('y', 0)
+    rotation_raw = movement.get('rotation', 0)
+    
+    # Si los valores son exactamente 0, detener motores inmediatamente
+    if x_raw == 0 and y_raw == 0 and rotation_raw == 0:
+        detener_motores()
+        last_command = {'vx': 0, 'vy': 0, 'omega': 0, 'ts': movement.get('timestamp')}
+        
+        # Leer y mostrar velocidades de encoders
+        velocidades = leer_velocidades_encoders()
+        print(f"[ENCODERS] Velocidades: FL={velocidades[0]:.2f}, FR={velocidades[1]:.2f}, "
+              f"RR={velocidades[2]:.2f}, RL={velocidades[3]:.2f}")
+        return
+    
+    vx, vy, omega = convertir_comando_frontend(x_raw, y_raw, rotation_raw)
 
-    # Actualizar tiempo del último comando
-    last_command_time = time.time()
-
-    # Umbral más bajo para detectar cuando el joystick está en el centro
-    if abs(vx) > 0.1 or abs(vy) > 0.1 or abs(omega) > 0.05:
+    # Umbrales más altos para evitar movimientos accidentales
+    if abs(vx) > 5.0 or abs(vy) > 5.0 or abs(omega) > 0.1:
         enviar_pwm(vx, vy, omega)
         last_command = {'vx': vx, 'vy': vy, 'omega': omega, 'ts': movement.get('timestamp')}
         print(f"[COMANDO] vx={vx:.1f} mm/s, vy={vy:.1f} mm/s, omega={omega:.3f} rad/s")
@@ -259,7 +272,6 @@ if __name__ == '__main__':
     print(f"[I2C] Modo: {'REAL' if I2C_DISPONIBLE else 'SIMULACIÓN'}")
     print(f"[DEVICE] ID: {CAR_DEVICE_ID}")
     print(f"[SERVIDOR] Escuchando en http://0.0.0.0:5000")
-    print(f"[TIMEOUT] Motores se detendrán después de {TIMEOUT_MOTORES}s sin comandos")
     print("=" * 60)
 
     uvicorn.run(app, host='0.0.0.0', port=5000, log_level="info")
