@@ -19,17 +19,17 @@ from fastapi.middleware.cors import CORSMiddleware
 try:
     import smbus2 as smbus
 
-    bus = smbus.SMBus(4)  # Bus I2C de software (GPIO 8=SDA, GPIO 9=SCL)
+    bus = smbus.SMBus(0)
     try:
         bus.write_quick(0x34)
         I2C_DISPONIBLE = True
-        print("[I2C] Conexión I2C real detectada en bus 4 (software)")
+        print("[I2C] Conexión I2C real detectada")
     except Exception:
         I2C_DISPONIBLE = False
         print("[I2C] Bus I2C no responde, usando simulación")
 except ImportError:
     I2C_DISPONIBLE = False
-    print("[I2C] smbus2 no disponible, usando simulación")
+    print("[I2C] smbus0 no disponible, usando simulación")
 
 DIRECCION_MOTORES = 0x34
 REG_VELOCIDAD_FIJA = 0x33
