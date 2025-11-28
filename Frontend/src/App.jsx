@@ -7,6 +7,7 @@ import CarVisualization from './components/CarVisualization';
 import ControlPanel from './components/ControlPanel';
 import Stats from './components/Stats';
 import LogsModal from './components/LogsModal';
+import EmergencyButton from './components/EmergencyButton';
 import socketService from './utils/socket';
 
 function App() {
@@ -138,6 +139,15 @@ function App() {
     }
   };
 
+  const handleEmergencyStop = () => {
+    console.log('🚨 Paro de emergencia activado');
+    socketService.emergencyStop();
+    // Resetear joysticks visualmente
+    setMovementInput({ x: 0, y: 0 });
+    setRotationInput({ x: 0, y: 0 });
+    setSpeed(0);
+  };
+
   const currentConversation = useMemo(() => {
     return selectedDevice ? conversations[selectedDevice] || [] : [];
   }, [conversations, selectedDevice]);
@@ -181,10 +191,13 @@ function App() {
           onMove={handleMovement}
         />
 
-        <ControlPanel 
-          mode={mode}
-          onModeChange={setMode}
-        />
+        <div className="center-controls">
+          <ControlPanel 
+            mode={mode}
+            onModeChange={setMode}
+          />
+          <EmergencyButton onEmergencyStop={handleEmergencyStop} />
+        </div>
 
         <Joystick 
           type="rotation" 

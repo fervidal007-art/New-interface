@@ -18,14 +18,10 @@ function Header({ batteryLevel, isConnected, onConnect, devices, selectedDevice,
   return (
     <div className="header">
       <div className="header-left">
+        <div className="logo-container">
+          <img src={logoITESO} alt="ITESO" className="iteso-logo" />
+        </div>
         <ConnectionStatus isConnected={isConnected} onConnect={onConnect} />
-        <button
-          className="header-logs-btn"
-          onClick={onOpenLogs}
-          disabled={logsDisabled}
-        >
-          Ver Logs
-        </button>
       </div>
 
       <div className="header-center">
@@ -39,16 +35,20 @@ function Header({ batteryLevel, isConnected, onConnect, devices, selectedDevice,
 
       <div className="header-right">
         <div className="status-item">
-          <Clock size={18} />
-          <span>{currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>
+          <Clock size={16} />
+          <span className="status-time">{currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>
         </div>
         <div className="status-item">
-          <Battery size={18} />
-          <span>{batteryLevel}% ({Math.floor(batteryLevel / 25)}h {Math.floor((batteryLevel % 25) * 2.4)}m)</span>
+          <Battery size={16} />
+          <span className="status-battery">{batteryLevel}%</span>
         </div>
-        <div className="logo-container">
-          <img src={logoITESO} alt="ITESO Logo" className="iteso-logo" />
-        </div>
+        <button
+          className="header-logs-btn"
+          onClick={onOpenLogs}
+          disabled={logsDisabled}
+        >
+          Logs
+        </button>
       </div>
     </div>
   );

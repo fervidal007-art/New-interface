@@ -93,7 +93,10 @@ operators = {}
 last_command = None
 last_sent_command = None  # Último comando enviado al bus
 last_send_time = 0  # Timestamp del último envío al bus
+last_command_time = 0  # Timestamp del último comando recibido
 MIN_SEND_INTERVAL = 0.1  # 100ms = máximo 10 mensajes por segundo
+COMMAND_TIMEOUT = 1.0  # 1 segundo sin comandos = detener motores
+safety_task = None  # Tarea de seguridad para monitoreo
 
 
 def calcular_pwm(vx, vy, omega):
@@ -139,6 +142,24 @@ async def emit_device_list(target_sid=None):
     else:
         await sio.emit('device_list', data)
     print(f"[DEVICES] Lista actualizada: {data['devices']}")
+
+
+async def safety_monitor():
+    """Monitorea timeout de comandos y detiene motores si no hay actividad"""
+    global last_command_time, last_sent_command
+    print("[SEGURIDAD] Monitor de timeout iniciado (1 segundo)")
+    
+    while True:
+        await asyncio.sleep(0.5)  # Verificar cada 500ms
+        
+        current_time = time.time()
+        time_since_last = current_time - last_command_time
+        
+        # Si ha pasado más de COMMAND_TIMEOUT y los motores no están detenidos
+        if time_since_last > COMMAND_TIMEOUT and last_sent_command != (0, 0, 0):
+            print(f"[SEGURIDAD] Timeout ({time_since_last:.1f}s sin comandos), deteniendo motores")
+            detener_motores()
+            last_sent_command = (0, 0, 0)
 
 
 @fastapi_app.get('/health')
@@ -189,7 +210,7 @@ async def list_devices(sid):
 
 @sio.event
 async def send_command(sid, data):
-    global last_command, last_sent_command, last_send_time
+    global last_command, last_sent_command, last_send_time, last_command_time
     target = data.get('target')
     payload = data.get('payload', {})
 
@@ -210,6 +231,9 @@ async def send_command(sid, data):
 
     # Actualizar last_command siempre (para el health check)
     last_command = {'vx': vx, 'vy': vy, 'omega': omega, 'ts': movement.get('timestamp')}
+    
+    # Actualizar tiempo del último comando recibido (para timeout)
+    last_command_time = time.time()
 
     # Crear comando actual para comparación
     current_command = (round(vx, 2), round(vy, 2), round(omega, 3))
@@ -246,6 +270,19 @@ async def send_command(sid, data):
         pass
 
 
+@sio.event
+async def emergency_stop(sid, data):
+    """Paro de emergencia - detiene inmediatamente todos los motores"""
+    global last_sent_command, last_command_time
+    print(f"[EMERGENCIA] Paro de emergencia activado por {sid}")
+    detener_motores()
+    last_sent_command = (0, 0, 0)
+    last_command_time = time.time()
+    
+    # Enviar confirmación a todos los clientes
+    await sio.emit('emergency_stop_confirmed', {'timestamp': time.time()})
+
+
 def cerrar_todo(signal_name, frame):
     print(f"\n[CERRANDO] Señal recibida ({signal_name}), deteniendo motores...")
     detener_motores()
@@ -254,6 +291,15 @@ def cerrar_todo(signal_name, frame):
 
 signal.signal(signal.SIGINT, cerrar_todo)
 signal.signal(signal.SIGTERM, cerrar_todo)
+
+
+@fastapi_app.on_event("startup")
+async def startup_event():
+    """Iniciar tareas de fondo al arrancar la aplicación"""
+    global safety_task, last_command_time
+    last_command_time = time.time()  # Inicializar tiempo
+    safety_task = asyncio.create_task(safety_monitor())
+    print("[INICIO] Tarea de monitoreo de seguridad iniciada")
 
 
 if __name__ == '__main__':
