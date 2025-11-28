@@ -1,19 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
 import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight } from 'lucide-react';
 
-// Zona muerta: valores menores a esto se consideran 0
-const DEADZONE = 0.15;
-// Throttle: tiempo mínimo entre envíos de comandos (ms) - aumentado para evitar saturación
-const THROTTLE_MS = 100;
-// Umbral mínimo de cambio para enviar (evita enviar valores idénticos)
-const CHANGE_THRESHOLD = 0.01;
-
 function Joystick({ type = "movement", onMove, icon: Icon }) {
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const containerRef = useRef(null);
-  const lastSendTime = useRef(0);
-  const lastSentValues = useRef({ x: 0, y: 0 });
 
   const handleStart = (e) => {
     e.preventDefault();
@@ -54,22 +45,10 @@ function Joystick({ type = "movement", onMove, icon: Icon }) {
     setPosition({ x, y });
 
     // Calculate normalized values (-1 to 1)
-    let normalizedX = x / maxDistance;
-    let normalizedY = -y / maxDistance; // Invert Y axis
+    const normalizedX = x / maxDistance;
+    const normalizedY = -y / maxDistance; // Invert Y axis
 
-    // Aplicar zona muerta: si el valor absoluto es menor al deadzone, ponerlo en 0
-    if (Math.abs(normalizedX) < DEADZONE) normalizedX = 0;
-    if (Math.abs(normalizedY) < DEADZONE) normalizedY = 0;
-
-    // Deduplicación: solo enviar si el valor cambió significativamente
-    const xChanged = Math.abs(normalizedX - lastSentValues.current.x) > CHANGE_THRESHOLD;
-    const yChanged = Math.abs(normalizedY - lastSentValues.current.y) > CHANGE_THRESHOLD;
-    
-    // Throttling: solo enviar si ha pasado suficiente tiempo Y el valor cambió
-    const now = Date.now();
-    if (onMove && (now - lastSendTime.current) >= THROTTLE_MS && (xChanged || yChanged)) {
-      lastSendTime.current = now;
-      lastSentValues.current = { x: normalizedX, y: normalizedY };
+    if (onMove) {
       onMove({ x: normalizedX, y: normalizedY });
     }
   };
@@ -77,10 +56,7 @@ function Joystick({ type = "movement", onMove, icon: Icon }) {
   const handleEnd = () => {
     setIsDragging(false);
     setPosition({ x: 0, y: 0 });
-    // Siempre enviar 0 cuando se suelta, sin throttle (pero solo si no estaba ya en 0)
-    if (onMove && (lastSentValues.current.x !== 0 || lastSentValues.current.y !== 0)) {
-      lastSendTime.current = Date.now();
-      lastSentValues.current = { x: 0, y: 0 };
+    if (onMove) {
       onMove({ x: 0, y: 0 });
     }
   };

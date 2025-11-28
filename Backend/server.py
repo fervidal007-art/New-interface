@@ -33,7 +33,6 @@ except ImportError:
 
 DIRECCION_MOTORES = 0x34
 REG_VELOCIDAD_FIJA = 0x33
-REG_LEER_ENCODERS = 0x30  # Registro para leer velocidades de encoders
 
 R = 0.048
 l1 = 0.097
@@ -60,10 +59,6 @@ class FakeBus:
         print(f"  Dirección: {hex(addr)}, Registro: {hex(reg)}")
         for name, pwm in zip(motor_names, data):
             print(f"  {name}: PWM = {pwm:6.2f}")
-    
-    def read_i2c_block_data(self, addr, reg, length):
-        # Simular lectura de encoders (valores ficticios)
-        return [0] * length
 
 
 if not I2C_DISPONIBLE:
@@ -96,13 +91,9 @@ app = socketio.ASGIApp(sio, other_asgi_app=fastapi_app)
 state_lock = asyncio.Lock()
 operators = {}
 last_command = None
-last_command_time = None
-TIMEOUT_MOTORES = 2.0  # Segundos sin comando antes de detener motores
-
-# Cola de comandos para procesamiento secuencial
-command_queue = asyncio.Queue(maxsize=5)  # Máximo 5 comandos en cola
-processing_command = False
-last_processed_command = None
+last_sent_command = None  # Último comando enviado al bus
+last_send_time = 0  # Timestamp del último envío al bus
+MIN_SEND_INTERVAL = 0.1  # 100ms = máximo 10 mensajes por segundo
 
 
 def calcular_pwm(vx, vy, omega):
@@ -134,28 +125,6 @@ def detener_motores():
         print(f"[ERROR] Error al detener motores: {exc}")
 
 
-def leer_velocidades_encoders():
-    """Lee las velocidades de los 4 encoders desde el Arduino vía I2C.
-    Retorna un array de 4 valores con las velocidades en RPM o cuentas por segundo.
-    """
-    try:
-        # Leer 16 bytes: 4 floats de 4 bytes cada uno (velocidad de cada motor)
-        data = bus.read_i2c_block_data(DIRECCION_MOTORES, REG_LEER_ENCODERS, 16)
-        
-        # Convertir bytes a floats (little-endian)
-        import struct
-        velocidades = []
-        for i in range(4):
-            bytes_motor = data[i*4:(i+1)*4]
-            velocidad = struct.unpack('<f', bytes(bytes_motor))[0]
-            velocidades.append(velocidad)
-        
-        return velocidades
-    except Exception as exc:
-        print(f"[ERROR] Error al leer encoders: {exc}")
-        return [0.0, 0.0, 0.0, 0.0]
-
-
 def convertir_comando_frontend(x, y, rotation):
     vx = x * V_MAX
     vy = y * V_MAX
@@ -172,19 +141,6 @@ async def emit_device_list(target_sid=None):
     print(f"[DEVICES] Lista actualizada: {data['devices']}")
 
 
-async def emit_log_message(device_id, direction, payload, origin=None):
-    """Envía un mensaje de log al frontend para mostrarlo en el modal de logs"""
-    message = {
-        'device': device_id,
-        'direction': direction,
-        'payload': payload,
-        'ts': time.time(),
-        'origin': origin or 'backend'
-    }
-    await sio.emit('conversation_message', message)
-    print(f"[LOG] {direction.upper()} {device_id}: {payload}")
-
-
 @fastapi_app.get('/health')
 async def health_check():
     return {
@@ -199,12 +155,6 @@ async def health_check():
 async def connect(sid, environ, auth):
     print(f"[CONEXIÓN] Operador conectado: {sid}")
     await emit_device_list(target_sid=sid)
-    # Iniciar tareas de fondo si es la primera conexión
-    if not hasattr(sio, '_background_tasks_started'):
-        sio._background_tasks_started = True
-        asyncio.create_task(check_motor_timeout())
-        asyncio.create_task(command_processor())
-        print("[SISTEMA] Tareas de fondo iniciadas (timeout y procesador de comandos)")
 
 
 @sio.event
@@ -238,175 +188,56 @@ async def list_devices(sid):
 
 
 @sio.event
-async def reset_system(sid, data):
-    """Reinicia el sistema: detiene motores y resetea estado"""
-    global last_command, last_command_time
-    
-    await emit_log_message(
-        CAR_DEVICE_ID,
-        'from_operator',
-        {'type': 'system_reset', 'action': 'reset_requested'},
-        origin=f'operator_{sid[:8]}'
-    )
-    
-    detener_motores()
-    last_command = None
-    last_command_time = None
-    
-    await emit_log_message(
-        CAR_DEVICE_ID,
-        'from_device',
-        {'type': 'system_reset', 'status': 'motors_stopped', 'state_cleared': True}
-    )
-    
-    print("[RESET] Sistema reiniciado por operador")
-
-
-# Tarea de fondo para verificar timeout de motores
-async def check_motor_timeout():
-    """Verifica periódicamente si hay que detener los motores por timeout"""
-    global last_command, last_command_time
-    while True:
-        await asyncio.sleep(0.5)  # Verificar cada 500ms
-        if last_command_time is not None:
-            elapsed = time.time() - last_command_time
-            if elapsed > TIMEOUT_MOTORES:
-                if last_command and (last_command.get('vx', 0) != 0 or 
-                                     last_command.get('vy', 0) != 0 or 
-                                     last_command.get('omega', 0) != 0):
-                    print(f"[TIMEOUT] Sin comandos por {elapsed:.1f}s, deteniendo motores")
-                    detener_motores()
-                    await emit_log_message(
-                        CAR_DEVICE_ID,
-                        'from_device',
-                        {
-                            'type': 'timeout',
-                            'reason': f'No commands received for {elapsed:.1f}s',
-                            'action': 'motors_stopped'
-                        }
-                    )
-                    last_command = {'vx': 0, 'vy': 0, 'omega': 0, 'ts': time.time() * 1000}
-
-
-async def process_command(sid, data):
-    """Procesa un comando de movimiento de forma secuencial"""
-    global last_command, last_command_time, last_processed_command
-    
-    target = data.get('target')
-    payload = data.get('payload', {})
-    
-    if target != CAR_DEVICE_ID:
-        return
-    
-    if payload.get('type') != 'movement':
-        return
-    
-    movement = payload.get('data', {})
-    x_raw = movement.get('x', 0)
-    y_raw = movement.get('y', 0)
-    rotation_raw = movement.get('rotation', 0)
-    timestamp = movement.get('timestamp', time.time() * 1000)
-    
-    # Deduplicación: ignorar si es el mismo comando que el último procesado
-    command_key = (round(x_raw, 3), round(y_raw, 3), round(rotation_raw, 3))
-    if last_processed_command == command_key:
-        return  # Ignorar comando duplicado
-    
-    last_processed_command = command_key
-    
-    # Actualizar tiempo del último comando
-    last_command_time = time.time()
-    
-    # Si los valores son exactamente 0, detener motores inmediatamente
-    if x_raw == 0 and y_raw == 0 and rotation_raw == 0:
-        detener_motores()
-        last_command = {'vx': 0, 'vy': 0, 'omega': 0, 'ts': timestamp}
-        
-        # Leer y mostrar velocidades de encoders
-        velocidades = leer_velocidades_encoders()
-        await emit_log_message(
-            CAR_DEVICE_ID,
-            'from_device',
-            {
-                'type': 'motors_stopped',
-                'encoders': {
-                    'FL': round(velocidades[0], 2),
-                    'FR': round(velocidades[1], 2),
-                    'RR': round(velocidades[2], 2),
-                    'RL': round(velocidades[3], 2)
-                }
-            }
-        )
-        return
-    
-    vx, vy, omega = convertir_comando_frontend(x_raw, y_raw, rotation_raw)
-    
-    # Umbrales más altos para evitar movimientos accidentales
-    if abs(vx) > 5.0 or abs(vy) > 5.0 or abs(omega) > 0.1:
-        pwm = calcular_pwm(vx, vy, omega)
-        enviar_pwm(vx, vy, omega)
-        last_command = {'vx': vx, 'vy': vy, 'omega': omega, 'ts': timestamp}
-    else:
-        detener_motores()
-        last_command = {'vx': 0, 'vy': 0, 'omega': 0, 'ts': timestamp}
-
-
-async def command_processor():
-    """Procesa comandos de la cola de forma secuencial"""
-    global processing_command
-    while True:
-        try:
-            # Esperar comando de la cola (con timeout para no bloquear indefinidamente)
-            try:
-                sid, data = await asyncio.wait_for(command_queue.get(), timeout=1.0)
-            except asyncio.TimeoutError:
-                continue
-            
-            processing_command = True
-            await process_command(sid, data)
-            command_queue.task_done()
-            processing_command = False
-            
-            # Pequeña pausa entre comandos para no saturar I2C
-            await asyncio.sleep(0.05)  # 50ms entre comandos
-            
-        except Exception as exc:
-            print(f"[ERROR] Error procesando comando: {exc}")
-            processing_command = False
-
-
-@sio.event
 async def send_command(sid, data):
-    """Recibe comandos y los agrega a la cola para procesamiento secuencial"""
+    global last_command, last_sent_command, last_send_time
     target = data.get('target')
     payload = data.get('payload', {})
-    
+
     if target != CAR_DEVICE_ID:
+        print(f"[COMANDO] Target desconocido ({target}), ignorando")
         return
-    
+
     if payload.get('type') != 'movement':
+        print(f"[COMANDO] Tipo no soportado: {payload.get('type')}")
         return
-    
+
     movement = payload.get('data', {})
-    x_raw = movement.get('x', 0)
-    y_raw = movement.get('y', 0)
-    rotation_raw = movement.get('rotation', 0)
-    timestamp = movement.get('timestamp', time.time() * 1000)
-    
-    # Si la cola está llena, descartar el comando más antiguo y agregar el nuevo
-    if command_queue.full():
-        try:
-            command_queue.get_nowait()  # Descartar comando más antiguo
-            command_queue.task_done()
-        except asyncio.QueueEmpty:
-            pass
-    
-    # Agregar comando a la cola (no bloquea si está llena porque ya limpiamos)
-    try:
-        command_queue.put_nowait((sid, data))
-    except asyncio.QueueFull:
-        # Si aún está llena (raro), simplemente ignorar este comando
-        print("[WARNING] Cola de comandos saturada, descartando comando")
+    vx, vy, omega = convertir_comando_frontend(
+        movement.get('x', 0),
+        movement.get('y', 0),
+        movement.get('rotation', 0),
+    )
+
+    # Actualizar last_command siempre (para el health check)
+    last_command = {'vx': vx, 'vy': vy, 'omega': omega, 'ts': movement.get('timestamp')}
+
+    # Crear comando actual para comparación
+    current_command = (round(vx, 2), round(vy, 2), round(omega, 3))
+    current_time = time.time()
+
+    # Verificar si el comando cambió
+    comando_cambio = (last_sent_command is None or last_sent_command != current_command)
+
+    # Verificar rate limiting (máximo 10 mensajes por segundo)
+    tiempo_suficiente = (current_time - last_send_time) >= MIN_SEND_INTERVAL
+
+    # Solo enviar si el comando cambió Y ha pasado suficiente tiempo
+    if comando_cambio and tiempo_suficiente:
+        if abs(vx) > 0.1 or abs(vy) > 0.1 or abs(omega) > 0.05:
+            enviar_pwm(vx, vy, omega)
+            print(f"[COMANDO] vx={vx:.1f} mm/s, vy={vy:.1f} mm/s, omega={omega:.3f} rad/s")
+        else:
+            detener_motores()
+            print("[COMANDO] Deteniendo motores")
+        
+        last_sent_command = current_command
+        last_send_time = current_time
+    elif not comando_cambio:
+        # Comando no cambió, no hacer nada (silenciosamente ignorar)
+        pass
+    elif not tiempo_suficiente:
+        # Rate limit: comando cambió pero muy pronto, ignorar
+        pass
 
 
 def cerrar_todo(signal_name, frame):
@@ -428,7 +259,6 @@ if __name__ == '__main__':
     print(f"[I2C] Modo: {'REAL' if I2C_DISPONIBLE else 'SIMULACIÓN'}")
     print(f"[DEVICE] ID: {CAR_DEVICE_ID}")
     print(f"[SERVIDOR] Escuchando en http://0.0.0.0:5000")
-    print(f"[TIMEOUT] Motores se detendrán después de {TIMEOUT_MOTORES}s sin comandos")
     print("=" * 60)
 
     uvicorn.run(app, host='0.0.0.0', port=5000, log_level="info")

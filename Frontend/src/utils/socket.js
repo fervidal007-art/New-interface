@@ -62,25 +62,7 @@ class SocketService {
       }
     };
 
-    // Log del comando enviado
-    console.log(`[SEND] Movimiento: x=${x.toFixed(3)}, y=${y.toFixed(3)}, rotation=${rotation.toFixed(3)}`);
-    
     this.socket.emit('send_command', { target, payload });
-  }
-
-  // Reiniciar sistema
-  resetSystem(target) {
-    if (!this.socket || !this.connected) {
-      console.warn('Socket no conectado');
-      return;
-    }
-    if (!target) {
-      console.warn('No hay un dispositivo seleccionado');
-      return;
-    }
-
-    console.log('[RESET] Solicitando reinicio del sistema');
-    this.socket.emit('reset_system', { target });
   }
 
   // Solicitar la lista de dispositivos

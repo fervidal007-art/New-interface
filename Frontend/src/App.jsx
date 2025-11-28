@@ -138,17 +138,6 @@ function App() {
     }
   };
 
-  const handleReset = () => {
-    if (isConnected && selectedDevice) {
-      if (window.confirm('¿Estás seguro de que quieres reiniciar el sistema? Esto detendrá todos los motores.')) {
-        socketService.resetSystem(selectedDevice);
-        // Resetear también los inputs locales
-        setMovementInput({ x: 0, y: 0 });
-        setRotationInput({ x: 0, y: 0 });
-      }
-    }
-  };
-
   const currentConversation = useMemo(() => {
     return selectedDevice ? conversations[selectedDevice] || [] : [];
   }, [conversations, selectedDevice]);
@@ -165,8 +154,6 @@ function App() {
         onRefresh={handleRefreshDevices}
         onOpenLogs={() => setIsLogsOpen(true)}
         logsDisabled={!selectedDevice}
-        onReset={handleReset}
-        resetDisabled={!isConnected || !selectedDevice}
       />
 
       <Stats 
