@@ -21,7 +21,7 @@ function Header({ batteryLevel, isConnected, onConnect, devices, selectedDevice,
         <div className="logo-container">
           <img src={logoITESO} alt="ITESO" className="iteso-logo" />
         </div>
-        <ConnectionStatus isConnected={isConnected} onConnect={onConnect} />
+        <ConnectionStatus isConnected={isConnected} />
       </div>
 
       <div className="header-center">

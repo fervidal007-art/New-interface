@@ -1,6 +1,6 @@
 import { Activity, Zap, Wind } from 'lucide-react';
 
-function Stats({ movementInput, rotationInput, speed }) {
+function Stats({ movementInput, rotationInput }) {
   return (
     <div className="stats-panel">
       <div className="stat-card">
@@ -24,18 +24,6 @@ function Stats({ movementInput, rotationInput, speed }) {
           <div className="stat-label">Rotación</div>
           <div className="stat-value">
             {rotationInput.x.toFixed(2)}
-          </div>
-        </div>
-      </div>
-
-      <div className="stat-card">
-        <div className="stat-icon">
-          <Wind size={20} />
-        </div>
-        <div className="stat-content">
-          <div className="stat-label">Velocidad</div>
-          <div className="stat-value">
-            {speed} km/h
           </div>
         </div>
       </div>

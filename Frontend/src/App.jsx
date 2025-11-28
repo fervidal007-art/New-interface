@@ -3,7 +3,6 @@ import { Move, RotateCw } from 'lucide-react';
 import Header from './components/Header';
 import SpeedDisplay from './components/SpeedDisplay';
 import Joystick from './components/Joystick';
-import CarVisualization from './components/CarVisualization';
 import ControlPanel from './components/ControlPanel';
 import Stats from './components/Stats';
 import LogsModal from './components/LogsModal';
@@ -166,20 +165,16 @@ function App() {
         logsDisabled={!selectedDevice}
       />
 
-      <Stats 
-        movementInput={movementInput}
-        rotationInput={rotationInput}
-        speed={speed}
-      />
-
       <div className="main-content">
         <div className="left-panel">
           <SpeedDisplay speed={speed} />
+          <Stats 
+            movementInput={movementInput}
+            rotationInput={rotationInput}
+          />
         </div>
 
-        <div className="center-panel">
-          <CarVisualization />
-        </div>
+        <div className="center-panel" />
 
         <div className="right-panel" />
       </div>
