@@ -58,13 +58,13 @@ l2 = 0.109
 
 W = (1 / R) * np.array([
 
-    [1, 1, -(l1 + l2)],
+    [1, 1, -(l1 + l2)*10],
 
-    [1, 1, (l1 + l2)],
+    [1, 1, (l1 + l2)*10],
 
-    [1, -1, (l1 + l2)],
+    [1, -1, (l1 + l2)*10],
 
-    [1, -1, -(l1 + l2)],
+    [1, -1, -(l1 + l2)*10],
 
 ])
 
@@ -312,7 +312,7 @@ async def motor_controller():
 
         else:
 
-            enviar_pwm(vx, -vy, omega)
+            enviar_pwm(vy, vx, omega)
 
             print(f"[MOTOR] vx={vx:.1f}, vy={vy:.1f}, omega={omega:.3f}")
 
