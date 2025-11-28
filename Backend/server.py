@@ -215,23 +215,29 @@ async def send_command(sid, data):
     current_command = (round(vx, 2), round(vy, 2), round(omega, 3))
     current_time = time.time()
 
+    # Verificar si es un comando de stop (todos los valores muy pequeños)
+    es_stop = (abs(vx) <= 0.1 and abs(vy) <= 0.1 and abs(omega) <= 0.05)
+
     # Verificar si el comando cambió
     comando_cambio = (last_sent_command is None or last_sent_command != current_command)
 
     # Verificar rate limiting (máximo 10 mensajes por segundo)
     tiempo_suficiente = (current_time - last_send_time) >= MIN_SEND_INTERVAL
 
-    # Solo enviar si el comando cambió Y ha pasado suficiente tiempo
-    if comando_cambio and tiempo_suficiente:
+    # Los comandos de stop siempre se envían inmediatamente (sin rate limiting)
+    # para asegurar que los motores se detengan cuando se suelta el joystick
+    if es_stop and comando_cambio:
+        detener_motores()
+        print("[COMANDO] Deteniendo motores (joystick soltado)")
+        last_sent_command = current_command
+        last_send_time = current_time
+    # Para comandos de movimiento, aplicar rate limiting normal
+    elif comando_cambio and tiempo_suficiente:
         if abs(vx) > 0.1 or abs(vy) > 0.1 or abs(omega) > 0.05:
             enviar_pwm(vx, vy, omega)
             print(f"[COMANDO] vx={vx:.1f} mm/s, vy={vy:.1f} mm/s, omega={omega:.3f} rad/s")
-        else:
-            detener_motores()
-            print("[COMANDO] Deteniendo motores")
-        
-        last_sent_command = current_command
-        last_send_time = current_time
+            last_sent_command = current_command
+            last_send_time = current_time
     elif not comando_cambio:
         # Comando no cambió, no hacer nada (silenciosamente ignorar)
         pass

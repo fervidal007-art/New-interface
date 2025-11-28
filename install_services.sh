@@ -44,8 +44,23 @@ echo ""
 # Verificar que el proyecto existe
 if [ ! -d "$PROJECT_DIR" ]; then
     echo "❌ Error: No se encuentra el directorio del proyecto en $PROJECT_DIR"
-    echo "   Asegúrate de haber clonado/creado el proyecto en esa ubicación"
+    echo ""
+    echo "📋 Para desplegar el proyecto, primero clona el repositorio:"
+    echo "   cd $CURRENT_HOME"
+    echo "   git clone [URL_DEL_REPOSITORIO] New-interface"
+    echo ""
+    echo "   O si ya tienes el proyecto en otra ubicación, créalo con:"
+    echo "   mkdir -p $PROJECT_DIR"
+    echo "   # Luego copia los archivos del proyecto ahí"
+    echo ""
     exit 1
+fi
+
+# Si es un repositorio git, actualizar código (opcional)
+if [ -d "$PROJECT_DIR/.git" ]; then
+    echo "🔄 Detectado repositorio Git, actualizando código..."
+    su - "$CURRENT_USER" -c "cd '$PROJECT_DIR' && git pull" || echo "   ⚠️  No se pudo actualizar (puede que no haya cambios o haya conflictos)"
+    echo ""
 fi
 
 # Verificar que los archivos de servicio existen
@@ -151,21 +166,88 @@ echo ""
 echo "🔄 Recargando systemd..."
 systemctl daemon-reload
 
+# Detener servicios si están corriendo (para aplicar cambios)
+echo "🛑 Deteniendo servicios si están corriendo..."
+if systemctl is-active --quiet robomesha-backend.service; then
+    systemctl stop robomesha-backend.service
+    echo "   ✅ Backend detenido"
+fi
+if systemctl is-active --quiet robomesha-frontend.service; then
+    systemctl stop robomesha-frontend.service
+    echo "   ✅ Frontend detenido"
+fi
+
 # Habilitar servicios para inicio automático
+echo ""
 echo "✅ Habilitando servicios para inicio automático..."
 systemctl enable robomesha-backend.service
 systemctl enable robomesha-frontend.service
 
+# Verificar que los servicios están habilitados
+if systemctl is-enabled --quiet robomesha-backend.service; then
+    echo "   ✅ Backend habilitado para inicio automático"
+else
+    echo "   ⚠️  Advertencia: Backend no se pudo habilitar"
+fi
+
+if systemctl is-enabled --quiet robomesha-frontend.service; then
+    echo "   ✅ Frontend habilitado para inicio automático"
+else
+    echo "   ⚠️  Advertencia: Frontend no se pudo habilitar"
+fi
+
+# Reiniciar servicios para aplicar cambios
+echo ""
+echo "🚀 Reiniciando servicios con la nueva configuración..."
+systemctl start robomesha-backend.service
+sleep 2  # Esperar un poco antes de iniciar el frontend
+systemctl start robomesha-frontend.service
+
+# Esperar un momento y verificar estado
+sleep 3
+echo ""
+echo "📊 Verificando estado de los servicios..."
+echo ""
+
+if systemctl is-active --quiet robomesha-backend.service; then
+    echo "   ✅ Backend está corriendo"
+else
+    echo "   ❌ Backend no está corriendo. Revisa los logs:"
+    echo "      sudo journalctl -u robomesha-backend -n 50"
+fi
+
+if systemctl is-active --quiet robomesha-frontend.service; then
+    echo "   ✅ Frontend está corriendo"
+else
+    echo "   ❌ Frontend no está corriendo. Revisa los logs:"
+    echo "      sudo journalctl -u robomesha-frontend -n 50"
+fi
+
 echo ""
 echo "=========================================="
-echo "✅ ¡Configuración completa!"
+echo "✅ ¡Despliegue completo!"
+echo "=========================================="
+echo ""
+echo "📦 Resumen de lo desplegado:"
+echo ""
+echo "   ✅ Backend configurado:"
+echo "      - Entorno virtual Python creado/actualizado"
+echo "      - Dependencias instaladas desde requirements.txt"
+echo "      - Servicio systemd instalado y habilitado"
+echo ""
+echo "   ✅ Frontend configurado:"
+echo "      - Node.js/npm verificado/instalado"
+echo "      - Dependencias instaladas"
+echo "      - Servicio systemd instalado y habilitado"
+echo ""
+echo "   ✅ Servicios systemd:"
+echo "      - robomesha-backend.service: Habilitado y corriendo"
+echo "      - robomesha-frontend.service: Habilitado y corriendo"
+echo "      - Inicio automático configurado para después de reiniciar"
+echo ""
 echo "=========================================="
 echo ""
 echo "📝 Comandos útiles:"
-echo ""
-echo "   Iniciar servicios ahora:"
-echo "     sudo systemctl start robomesha-backend"
-echo "     sudo systemctl start robomesha-frontend"
 echo ""
 echo "   Ver estado:"
 echo "     sudo systemctl status robomesha-backend"
@@ -175,17 +257,17 @@ echo "   Ver logs en tiempo real:"
 echo "     sudo journalctl -u robomesha-backend -f"
 echo "     sudo journalctl -u robomesha-frontend -f"
 echo ""
-echo "   Detener servicios:"
-echo "     sudo systemctl stop robomesha-backend"
-echo "     sudo systemctl stop robomesha-frontend"
-echo ""
 echo "   Reiniciar servicios:"
 echo "     sudo systemctl restart robomesha-backend"
 echo "     sudo systemctl restart robomesha-frontend"
+echo ""
+echo "   Detener servicios:"
+echo "     sudo systemctl stop robomesha-backend"
+echo "     sudo systemctl stop robomesha-frontend"
 echo ""
 echo "   Deshabilitar inicio automático:"
 echo "     sudo systemctl disable robomesha-backend"
 echo "     sudo systemctl disable robomesha-frontend"
 echo ""
-echo "🚀 Los servicios se iniciarán automáticamente al reiniciar la Raspberry Pi"
+echo "🚀 Los servicios están habilitados y se iniciarán automáticamente al reiniciar"
 echo ""
