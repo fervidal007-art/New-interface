@@ -312,7 +312,7 @@ async def motor_controller():
 
         else:
 
-            enviar_pwm(vx, vy, omega)
+            enviar_pwm(vx, -vy, omega)
 
             print(f"[MOTOR] vx={vx:.1f}, vy={vy:.1f}, omega={omega:.3f}")
 
