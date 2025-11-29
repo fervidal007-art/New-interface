@@ -212,25 +212,20 @@ function App() {
         logsDisabled={!selectedDevice}
       />
 
-      <div className="main-content">
-        <div className="left-panel" />
-
-        <div className="center-panel" />
-
-        <div className="right-panel">
-          <SpeedControl 
-            speedLevel={speedLevel}
-            onSpeedChange={setSpeedLevel}
-            disabled={!isConnected || !selectedDevice}
-          />
-          <Stats 
-            movementInput={movementInput}
-            rotationInput={rotationInput}
-          />
-        </div>
+      <div className="info-panel">
+        <SpeedDisplay speed={speed} />
+        <SpeedControl 
+          speedLevel={speedLevel}
+          onSpeedChange={setSpeedLevel}
+          disabled={!isConnected || !selectedDevice}
+        />
+        <Stats 
+          movementInput={movementInput}
+          rotationInput={rotationInput}
+        />
       </div>
 
-      <div className="buttons-row">
+      <div className="controls-panel">
         <div className="left-buttons">
           <MovementButtons 
             onMove={handleMovement}
@@ -244,7 +239,6 @@ function App() {
             mode={mode}
             onModeChange={setMode}
           />
-          <SpeedDisplay speed={speed} />
         </div>
 
         <div className="right-buttons">
