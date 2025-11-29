@@ -129,24 +129,31 @@ function App() {
       return;
     }
     
-    // Si hay nuevo movimiento, activar el bloqueo
+    // Si se suelta el botón (todo en 0), NO hacer nada - mantener el último comando
+    // Solo el botón de paro puede detener el movimiento
+    if (!hasNewMovement) {
+      return; // No actualizar estado ni enviar comando
+    }
+    
+    // Si hay nuevo movimiento, activar el bloqueo y enviar comando UNA VEZ
     if (hasNewMovement) {
       setMovementLocked(true);
-    }
-    
-    // Si se suelta (todo en 0), desactivar el bloqueo
-    if (!hasNewMovement) {
-      setMovementLocked(false);
-    }
-    
-    setMovementInput(input);
-
-    if (isConnected) {
-      socketService.sendMovement(selectedDevice, input.x, input.y, rotationInput.x);
+      setMovementInput(input);
+      
+      // Enviar comando SOLO cuando hay un nuevo movimiento (no repetir)
+      if (isConnected) {
+        socketService.sendMovement(selectedDevice, input.x, input.y, rotationInput.x);
+      }
     }
   };
 
   const handleRotation = (input) => {
+    // Si se suelta el botón (rotación en 0), NO hacer nada - mantener el último comando
+    if (input.x === 0) {
+      return; // No actualizar estado ni enviar comando
+    }
+    
+    // Solo enviar comando cuando hay nueva rotación (no repetir)
     setRotationInput(input);
 
     setDirection(prev => {
@@ -190,17 +197,16 @@ function App() {
       />
 
       <div className="main-content">
-        <div className="left-panel">
-          <SpeedDisplay speed={speed} />
+        <div className="left-panel" />
+
+        <div className="center-panel" />
+
+        <div className="right-panel">
           <Stats 
             movementInput={movementInput}
             rotationInput={rotationInput}
           />
         </div>
-
-        <div className="center-panel" />
-
-        <div className="right-panel" />
       </div>
 
       <div className="buttons-row">
@@ -208,6 +214,7 @@ function App() {
           <MovementButtons 
             onMove={handleMovement}
             disabled={!isConnected || !selectedDevice}
+            onEmergencyStop={handleEmergencyStop}
           />
         </div>
 
@@ -216,7 +223,7 @@ function App() {
             mode={mode}
             onModeChange={setMode}
           />
-          <EmergencyButton onEmergencyStop={handleEmergencyStop} />
+          <SpeedDisplay speed={speed} />
         </div>
 
         <div className="right-buttons">

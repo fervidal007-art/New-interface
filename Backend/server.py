@@ -31,7 +31,14 @@ except ImportError:
     I2C_DISPONIBLE = False
     print("[I2C] smbus0 no disponible, usando simulación")
 
+# ---------- Configuración HiWonder Driver I2C ----------
+# Driver HiWonder para control de motores omnidireccionales
+# Documentación: https://docs.hiwonder.com/
+# 
+# Dirección I2C del controlador de motores
 DIRECCION_MOTORES = 0x34
+# Registro para velocidad fija (Fixed Speed Register)
+# Este registro acepta 4 valores PWM (uno por motor) en el rango -100 a 100
 REG_VELOCIDAD_FIJA = 0x33
 BUFFER_LENGTH = 32  # Tamaño del buffer circular (similar a Wire de Arduino)
 
@@ -222,6 +229,17 @@ def calcular_pwm(vx, vy, omega):
 
 
 def enviar_pwm(vx, vy, omega):
+    """
+    Envía valores PWM al driver HiWonder mediante I2C.
+    
+    El driver HiWonder espera 4 valores PWM (uno por motor) en el registro 0x33:
+    - Motor 0: Delantero Izquierdo
+    - Motor 1: Delantero Derecho  
+    - Motor 2: Trasero Derecho
+    - Motor 3: Trasero Izquierdo
+    
+    Valores: -100 (máxima velocidad reversa) a 100 (máxima velocidad adelante)
+    """
     pwm = calcular_pwm(vx, vy, omega)
     try:
         bus.write_i2c_block_data(DIRECCION_MOTORES, REG_VELOCIDAD_FIJA, pwm)
@@ -230,17 +248,21 @@ def enviar_pwm(vx, vy, omega):
             # Imprimir estado del buffer cada 50 escrituras
             i2c_wrapper.print_buffer_status()
     except Exception as exc:
-        print(f"[ERROR] Error al enviar PWM: {exc}")
+        print(f"[ERROR] Error al enviar PWM al driver HiWonder: {exc}")
         if i2c_wrapper is not None:
             print(f"[I2C BUFFER] Errores totales: {i2c_wrapper.error_count}")
 
 
 def detener_motores():
+    """
+    Detiene todos los motores enviando PWM = 0 a todos los motores.
+    Compatible con driver HiWonder.
+    """
     try:
         bus.write_i2c_block_data(DIRECCION_MOTORES, REG_VELOCIDAD_FIJA, [0, 0, 0, 0])
-        print("[MOTORES] Todos los motores detenidos")
+        print("[MOTORES] Todos los motores detenidos (HiWonder)")
     except Exception as exc:
-        print(f"[ERROR] Error al detener motores: {exc}")
+        print(f"[ERROR] Error al detener motores en HiWonder: {exc}")
 
 
 def convertir_comando_frontend(x, y, rotation):

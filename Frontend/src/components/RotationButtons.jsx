@@ -1,8 +1,13 @@
+import { useState } from 'react';
 import { RotateCcw, RotateCw } from 'lucide-react';
 
 function RotationButtons({ onRotate, disabled }) {
+  const [pressedButton, setPressedButton] = useState(null);
+
   const handleButtonPress = (direction) => {
     if (disabled) return;
+    
+    setPressedButton(direction);
     
     const rotation = direction === 'left' ? -1 : 1;
     onRotate({ x: rotation, y: 0 });
@@ -10,13 +15,16 @@ function RotationButtons({ onRotate, disabled }) {
 
   const handleButtonRelease = () => {
     if (disabled) return;
-    onRotate({ x: 0, y: 0 });
+    // NO enviar comando de stop al soltar - mantener el último comando activo
+    // Solo el botón de paro puede detener la rotación
+    setPressedButton(null);
+    // No llamar a onRotate - mantener el último comando
   };
 
   return (
     <div className="rotation-buttons">
       <button
-        className="rotation-btn left"
+        className={`rotation-btn left ${pressedButton === 'left' ? 'pressed' : ''}`}
         onMouseDown={() => handleButtonPress('left')}
         onMouseUp={handleButtonRelease}
         onMouseLeave={handleButtonRelease}
@@ -29,7 +37,7 @@ function RotationButtons({ onRotate, disabled }) {
       </button>
       
       <button
-        className="rotation-btn right"
+        className={`rotation-btn right ${pressedButton === 'right' ? 'pressed' : ''}`}
         onMouseDown={() => handleButtonPress('right')}
         onMouseUp={handleButtonRelease}
         onMouseLeave={handleButtonRelease}
