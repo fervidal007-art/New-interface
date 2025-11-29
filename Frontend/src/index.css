@@ -631,6 +631,7 @@ body {
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
+  padding: 0.5rem;
 }
 
 .center-controls {
@@ -1364,6 +1365,7 @@ body {
     width: 160px;
     height: 160px;
     gap: 0.4rem;
+    padding: 0.75rem;
   }
 
   .movement-btn {
@@ -1410,9 +1412,14 @@ body {
     font-size: 0.7rem;
   }
 
+  .rotation-buttons {
+    padding: 0.75rem;
+    gap: 1rem;
+  }
+
   .rotation-btn {
-    width: 100px;
-    height: 85px;
+    width: 90px;
+    height: 110px;
     gap: 0.4rem;
   }
 
