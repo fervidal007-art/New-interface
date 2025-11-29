@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Move, RotateCw } from 'lucide-react';
 import Header from './components/Header';
 import SpeedDisplay from './components/SpeedDisplay';
-import Joystick from './components/Joystick';
+import MovementButtons from './components/MovementButtons';
+import RotationButtons from './components/RotationButtons';
 import ControlPanel from './components/ControlPanel';
 import Stats from './components/Stats';
 import LogsModal from './components/LogsModal';
@@ -22,6 +22,7 @@ function App() {
   const [selectedDevice, setSelectedDevice] = useState('');
   const [conversations, setConversations] = useState({});
   const [isLogsOpen, setIsLogsOpen] = useState(false);
+  const [movementLocked, setMovementLocked] = useState(false); // Bloqueo para cambio de movimiento
 
   const handleDeviceList = useCallback(
     (data = {}) => {
@@ -116,6 +117,28 @@ function App() {
   }, [movementInput]);
 
   const handleMovement = (input) => {
+    // Verificar si hay movimiento previo y no se ha presionado paro
+    const hasPreviousMovement = movementInput.x !== 0 || movementInput.y !== 0;
+    const hasNewMovement = input.x !== 0 || input.y !== 0;
+    const isChangingDirection = hasPreviousMovement && hasNewMovement && 
+                                (movementInput.x !== input.x || movementInput.y !== input.y);
+    
+    // Si está cambiando de dirección y está bloqueado, no permitir
+    if (isChangingDirection && movementLocked) {
+      console.log('⚠️ Debes presionar PARO antes de cambiar de dirección');
+      return;
+    }
+    
+    // Si hay nuevo movimiento, activar el bloqueo
+    if (hasNewMovement) {
+      setMovementLocked(true);
+    }
+    
+    // Si se suelta (todo en 0), desactivar el bloqueo
+    if (!hasNewMovement) {
+      setMovementLocked(false);
+    }
+    
     setMovementInput(input);
 
     if (isConnected) {
@@ -141,10 +164,11 @@ function App() {
   const handleEmergencyStop = () => {
     console.log('🚨 Paro de emergencia activado');
     socketService.emergencyStop();
-    // Resetear joysticks visualmente
+    // Resetear todo y desbloquear movimiento
     setMovementInput({ x: 0, y: 0 });
     setRotationInput({ x: 0, y: 0 });
     setSpeed(0);
+    setMovementLocked(false); // Desbloquear después del paro
   };
 
   const currentConversation = useMemo(() => {
@@ -179,12 +203,13 @@ function App() {
         <div className="right-panel" />
       </div>
 
-      <div className="joystick-row">
-        <Joystick 
-          type="movement" 
-          icon={Move}
-          onMove={handleMovement}
-        />
+      <div className="buttons-row">
+        <div className="left-buttons">
+          <MovementButtons 
+            onMove={handleMovement}
+            disabled={!isConnected || !selectedDevice}
+          />
+        </div>
 
         <div className="center-controls">
           <ControlPanel 
@@ -194,11 +219,12 @@ function App() {
           <EmergencyButton onEmergencyStop={handleEmergencyStop} />
         </div>
 
-        <Joystick 
-          type="rotation" 
-          icon={RotateCw}
-          onMove={handleRotation}
-        />
+        <div className="right-buttons">
+          <RotationButtons 
+            onRotate={handleRotation}
+            disabled={!isConnected || !selectedDevice}
+          />
+        </div>
       </div>
 
       {isLogsOpen && (

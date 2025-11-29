@@ -612,13 +612,20 @@ body {
   font-size: 0.9rem;
 }
 
-/* Joystick Row */
-.joystick-row {
+/* Buttons Row */
+.buttons-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 2rem 4rem 1.5rem;
   gap: 2rem;
+}
+
+.left-buttons,
+.right-buttons {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Center Controls */
@@ -688,64 +695,110 @@ body {
   }
 }
 
-/* Joystick */
-.joystick-container {
-  flex-shrink: 0;
-  touch-action: none;
+/* Movement Buttons */
+.movement-buttons {
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: auto auto auto;
+  gap: 0.5rem;
+  align-items: center;
+  justify-items: center;
 }
 
-.joystick-outer {
-  width: 180px;
-  height: 180px;
+.movement-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: center;
+}
+
+.movement-btn {
+  width: 80px;
+  height: 80px;
   background: rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
-  position: relative;
-  cursor: pointer;
-  user-select: none;
-  touch-action: none;
-  -webkit-user-select: none;
-  -webkit-touch-callout: none;
-}
-
-.joystick-directions {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-.dir-indicator {
-  position: absolute;
-  color: rgba(255, 255, 255, 0.2);
-}
-
-.dir-indicator.up { top: 15px; left: 50%; transform: translateX(-50%); }
-.dir-indicator.down { bottom: 15px; left: 50%; transform: translateX(-50%); }
-.dir-indicator.left { left: 15px; top: 50%; transform: translateY(-50%); }
-.dir-indicator.right { right: 15px; top: 50%; transform: translateY(-50%); }
-
-.joystick-inner {
-  width: 80px;
-  height: 80px;
-  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
-  box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
-  transition: transform 0.1s ease-out;
-  pointer-events: none;
+  cursor: pointer;
+  transition: all 0.15s;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+  user-select: none;
+  touch-action: none;
 }
 
-.joystick-outer:active .joystick-inner {
-  box-shadow: 0 2px 10px rgba(99, 102, 241, 0.6);
+.movement-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(99, 102, 241, 0.5);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.3);
+}
+
+.movement-btn:active:not(:disabled) {
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  border-color: #6366f1;
+  transform: translateY(0) scale(0.95);
+  box-shadow: 0 2px 10px rgba(99, 102, 241, 0.5);
+}
+
+.movement-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Rotation Buttons */
+.rotation-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  align-items: center;
+  justify-content: center;
+}
+
+.rotation-btn {
+  width: 120px;
+  height: 100px;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  color: white;
+  cursor: pointer;
+  transition: all 0.15s;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+  user-select: none;
+  touch-action: none;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.rotation-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(99, 102, 241, 0.5);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.3);
+}
+
+.rotation-btn:active:not(:disabled) {
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  border-color: #6366f1;
+  transform: translateY(0) scale(0.95);
+  box-shadow: 0 2px 10px rgba(99, 102, 241, 0.5);
+}
+
+.rotation-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 /* Control Panel */
@@ -904,18 +957,18 @@ body {
 
 /* Responsive */
 @media (max-width: 1200px) {
-  .joystick-row {
+  .buttons-row {
     padding: 1.5rem 2rem;
   }
   
-  .joystick-outer {
-    width: 150px;
-    height: 150px;
+  .movement-btn {
+    width: 70px;
+    height: 70px;
   }
   
-  .joystick-inner {
-    width: 65px;
-    height: 65px;
+  .rotation-btn {
+    width: 100px;
+    height: 85px;
   }
   
   .speed-value {
@@ -1080,7 +1133,7 @@ body {
     display: none;
   }
   
-  .joystick-row {
+  .buttons-row {
     flex-direction: row;
     padding: 1rem 1rem 2rem;
     gap: 1rem;
@@ -1118,14 +1171,25 @@ body {
     font-size: 0.8rem;
   }
 
-  .joystick-outer {
-    width: 140px;
-    height: 140px;
+  .movement-btn {
+    width: 60px;
+    height: 60px;
   }
 
-  .joystick-inner {
-    width: 55px;
-    height: 55px;
+  .movement-btn svg {
+    width: 24px;
+    height: 24px;
+  }
+
+  .rotation-btn {
+    width: 90px;
+    height: 75px;
+    font-size: 0.7rem;
+  }
+
+  .rotation-btn svg {
+    width: 24px;
+    height: 24px;
   }
 
   .stats-panel {
