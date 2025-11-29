@@ -151,6 +151,13 @@ sed -i "s|User=admin|User=$CURRENT_USER|g" "$SERVICE_DIR/robomesha-frontend.serv
 sed -i "s|Group=admin|Group=$CURRENT_USER|g" "$SERVICE_DIR/robomesha-backend.service"
 sed -i "s|Group=admin|Group=$CURRENT_USER|g" "$SERVICE_DIR/robomesha-frontend.service"
 
+# Actualizar ruta de npm si es necesario (para Raspberry Pi)
+if command -v npm &> /dev/null; then
+    NPM_PATH=$(which npm)
+    sed -i "s|/usr/bin/npm|$NPM_PATH|g" "$SERVICE_DIR/robomesha-frontend.service"
+    echo "   ✅ Ruta de npm actualizada: $NPM_PATH"
+fi
+
 # Verificar permisos del venv (importante para systemd)
 if [ -d "$BACKEND_VENV" ]; then
     echo "🔐 Ajustando permisos del entorno virtual..."

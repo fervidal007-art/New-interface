@@ -1,30 +1,25 @@
 import { AlertOctagon } from 'lucide-react';
-import { useState } from 'react';
 
-function EmergencyButton({ onEmergencyStop }) {
-  const [isPressed, setIsPressed] = useState(false);
-
-  const handlePress = () => {
-    // No bloquear si ya está presionado - permitir múltiples pulsaciones
-    setIsPressed(true);
+function EmergencyButton({ onEmergencyStop, emergencyStopActive }) {
+  const handlePress = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
     
-    // Ejecutar paro INMEDIATAMENTE
+    // Ejecutar paro INMEDIATAMENTE sin ningún delay
     onEmergencyStop();
-    
-    // Resetear el botón después de 1 segundo (feedback visual)
-    setTimeout(() => {
-      setIsPressed(false);
-    }, 1000);
   };
 
   return (
     <button
-      className={`emergency-button ${isPressed ? 'pressed' : ''}`}
+      className={`emergency-button ${emergencyStopActive ? 'active' : ''}`}
       onClick={handlePress}
+      onMouseDown={handlePress}
+      onTouchStart={handlePress}
       aria-label="Paro de emergencia"
+      type="button"
     >
       <AlertOctagon size={32} />
-      <span className="emergency-text">PARO</span>
+      <span className="emergency-text">{emergencyStopActive ? 'ACTIVO' : 'PARO'}</span>
     </button>
   );
 }

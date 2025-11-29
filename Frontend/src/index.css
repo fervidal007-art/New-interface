@@ -694,6 +694,21 @@ body {
   opacity: 0.6;
 }
 
+.emergency-button.active {
+  background: linear-gradient(135deg, #991b1b 0%, #7f1d1d 100%);
+  box-shadow: 0 0 30px rgba(220, 38, 38, 0.8), inset 0 2px 8px rgba(0, 0, 0, 0.5);
+  animation: pulse-ring-active 1s infinite;
+}
+
+@keyframes pulse-ring-active {
+  0%, 100% {
+    box-shadow: 0 0 30px rgba(220, 38, 38, 0.8), inset 0 2px 8px rgba(0, 0, 0, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(220, 38, 38, 1), inset 0 2px 8px rgba(0, 0, 0, 0.5);
+  }
+}
+
 .emergency-text {
   letter-spacing: 0.5px;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);

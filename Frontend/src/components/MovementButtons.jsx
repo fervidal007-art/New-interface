@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight } from 'lucide-react';
 import EmergencyButton from './EmergencyButton';
 
-function MovementButtons({ onMove, disabled, onEmergencyStop }) {
+function MovementButtons({ onMove, disabled, onEmergencyStop, emergencyStopActive }) {
   const [pressedButton, setPressedButton] = useState(null);
 
   const handleButtonPress = (direction) => {
@@ -78,7 +78,10 @@ function MovementButtons({ onMove, disabled, onEmergencyStop }) {
       </button>
       
       <div className="movement-center">
-        <EmergencyButton onEmergencyStop={onEmergencyStop} />
+        <EmergencyButton 
+          onEmergencyStop={onEmergencyStop}
+          emergencyStopActive={emergencyStopActive}
+        />
       </div>
       
       <button

@@ -25,6 +25,7 @@ function App() {
   const [isLogsOpen, setIsLogsOpen] = useState(false);
   const [movementLocked, setMovementLocked] = useState(false); // Bloqueo para cambio de movimiento
   const [speedLevel, setSpeedLevel] = useState(1); // Nivel de velocidad 1-5 (default: 1)
+  const [emergencyStopActive, setEmergencyStopActive] = useState(false); // Variable global de paro - ROMPE TODO
 
   const handleDeviceList = useCallback(
     (data = {}) => {
@@ -119,6 +120,12 @@ function App() {
   }, [movementInput]);
 
   const handleMovement = (input) => {
+    // 🚨 PARO GLOBAL: Si el paro está activo, BLOQUEAR TODO
+    if (emergencyStopActive) {
+      console.log('🚨 PARO ACTIVO: Comando de movimiento bloqueado');
+      return;
+    }
+    
     // Verificar si hay movimiento previo y no se ha presionado paro
     const hasPreviousMovement = movementInput.x !== 0 || movementInput.y !== 0;
     const hasNewMovement = input.x !== 0 || input.y !== 0;
@@ -155,6 +162,12 @@ function App() {
   };
 
   const handleRotation = (input) => {
+    // 🚨 PARO GLOBAL: Si el paro está activo, BLOQUEAR TODO
+    if (emergencyStopActive) {
+      console.log('🚨 PARO ACTIVO: Comando de rotación bloqueado');
+      return;
+    }
+    
     // Si se suelta el botón (rotación en 0), NO hacer nada - mantener el último comando
     if (input.x === 0) {
       return; // No actualizar estado ni enviar comando
@@ -180,17 +193,26 @@ function App() {
   };
 
   const handleEmergencyStop = () => {
-    console.log('🚨 Paro de emergencia activado');
+    // 🚨 PARO GLOBAL: Activar/Desactivar paro de emergencia
+    const newStopState = !emergencyStopActive;
+    setEmergencyStopActive(newStopState);
     
-    // Primero resetear estado local INMEDIATAMENTE
-    setMovementInput({ x: 0, y: 0 });
-    setRotationInput({ x: 0, y: 0 });
-    setSpeed(0);
-    setMovementLocked(false); // Desbloquear después del paro
-    
-    // Luego enviar comando de paro al backend
-    if (isConnected) {
-      socketService.emergencyStop();
+    if (newStopState) {
+      console.log('🚨 PARO DE EMERGENCIA ACTIVADO - TODOS LOS COMANDOS BLOQUEADOS');
+      
+      // Resetear estado local INMEDIATAMENTE
+      setMovementInput({ x: 0, y: 0 });
+      setRotationInput({ x: 0, y: 0 });
+      setSpeed(0);
+      setMovementLocked(false);
+      
+      // Enviar comando de paro al backend
+      if (isConnected) {
+        socketService.emergencyStop();
+      }
+    } else {
+      console.log('✅ PARO DE EMERGENCIA DESACTIVADO - Sistema listo para operar');
+      // Al desactivar, el sistema queda listo pero no envía comandos hasta que se presione un botón
     }
   };
 
@@ -229,8 +251,9 @@ function App() {
         <div className="left-buttons">
           <MovementButtons 
             onMove={handleMovement}
-            disabled={!isConnected || !selectedDevice}
+            disabled={!isConnected || !selectedDevice || emergencyStopActive}
             onEmergencyStop={handleEmergencyStop}
+            emergencyStopActive={emergencyStopActive}
           />
         </div>
 
@@ -244,7 +267,7 @@ function App() {
         <div className="right-buttons">
           <RotationButtons 
             onRotate={handleRotation}
-            disabled={!isConnected || !selectedDevice}
+            disabled={!isConnected || !selectedDevice || emergencyStopActive}
           />
         </div>
       </div>
