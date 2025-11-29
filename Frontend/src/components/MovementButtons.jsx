@@ -15,16 +15,24 @@ function MovementButtons({ onMove, disabled, onEmergencyStop }) {
     
     switch (direction) {
       case 'up':
+        // Arriba = Avanzar (movimiento hacia adelante en Y)
         y = 1;
+        x = 0;
         break;
       case 'down':
+        // Abajo = Retroceder (movimiento hacia atrás en Y)
         y = -1;
+        x = 0;
         break;
       case 'left':
+        // Izquierda = Movimiento lateral izquierdo (movimiento en X negativo)
         x = -1;
+        y = 0;
         break;
       case 'right':
+        // Derecha = Movimiento lateral derecho (movimiento en X positivo)
         x = 1;
+        y = 0;
         break;
       default:
         break;

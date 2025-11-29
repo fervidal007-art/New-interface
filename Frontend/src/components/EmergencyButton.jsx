@@ -5,20 +5,22 @@ function EmergencyButton({ onEmergencyStop }) {
   const [isPressed, setIsPressed] = useState(false);
 
   const handlePress = () => {
+    // No bloquear si ya está presionado - permitir múltiples pulsaciones
     setIsPressed(true);
+    
+    // Ejecutar paro INMEDIATAMENTE
     onEmergencyStop();
     
-    // Resetear el botón después de 2 segundos
+    // Resetear el botón después de 1 segundo (feedback visual)
     setTimeout(() => {
       setIsPressed(false);
-    }, 2000);
+    }, 1000);
   };
 
   return (
     <button
       className={`emergency-button ${isPressed ? 'pressed' : ''}`}
       onClick={handlePress}
-      disabled={isPressed}
       aria-label="Paro de emergencia"
     >
       <AlertOctagon size={32} />

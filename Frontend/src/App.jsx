@@ -7,6 +7,7 @@ import ControlPanel from './components/ControlPanel';
 import Stats from './components/Stats';
 import LogsModal from './components/LogsModal';
 import EmergencyButton from './components/EmergencyButton';
+import SpeedControl from './components/SpeedControl';
 import socketService from './utils/socket';
 
 function App() {
@@ -23,6 +24,7 @@ function App() {
   const [conversations, setConversations] = useState({});
   const [isLogsOpen, setIsLogsOpen] = useState(false);
   const [movementLocked, setMovementLocked] = useState(false); // Bloqueo para cambio de movimiento
+  const [speedLevel, setSpeedLevel] = useState(1); // Nivel de velocidad 1-5 (default: 1)
 
   const handleDeviceList = useCallback(
     (data = {}) => {
@@ -140,9 +142,14 @@ function App() {
       setMovementLocked(true);
       setMovementInput(input);
       
+      // Aplicar nivel de velocidad (1-5, donde 1=20%, 2=40%, ..., 5=100%)
+      const speedMultiplier = speedLevel / 5;
+      const scaledX = input.x * speedMultiplier;
+      const scaledY = input.y * speedMultiplier;
+      
       // Enviar comando SOLO cuando hay un nuevo movimiento (no repetir)
       if (isConnected) {
-        socketService.sendMovement(selectedDevice, input.x, input.y, rotationInput.x);
+        socketService.sendMovement(selectedDevice, scaledX, scaledY, rotationInput.x);
       }
     }
   };
@@ -163,19 +170,28 @@ function App() {
       return newDir;
     });
 
+    // Aplicar nivel de velocidad a la rotación
+    const speedMultiplier = speedLevel / 5;
+    const scaledRotation = input.x * speedMultiplier;
+
     if (isConnected) {
-      socketService.sendMovement(selectedDevice, movementInput.x, movementInput.y, input.x);
+      socketService.sendMovement(selectedDevice, movementInput.x, movementInput.y, scaledRotation);
     }
   };
 
   const handleEmergencyStop = () => {
     console.log('🚨 Paro de emergencia activado');
-    socketService.emergencyStop();
-    // Resetear todo y desbloquear movimiento
+    
+    // Primero resetear estado local INMEDIATAMENTE
     setMovementInput({ x: 0, y: 0 });
     setRotationInput({ x: 0, y: 0 });
     setSpeed(0);
     setMovementLocked(false); // Desbloquear después del paro
+    
+    // Luego enviar comando de paro al backend
+    if (isConnected) {
+      socketService.emergencyStop();
+    }
   };
 
   const currentConversation = useMemo(() => {
@@ -202,6 +218,11 @@ function App() {
         <div className="center-panel" />
 
         <div className="right-panel">
+          <SpeedControl 
+            speedLevel={speedLevel}
+            onSpeedChange={setSpeedLevel}
+            disabled={!isConnected || !selectedDevice}
+          />
           <Stats 
             movementInput={movementInput}
             rotationInput={rotationInput}
