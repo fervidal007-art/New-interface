@@ -65,14 +65,19 @@ class SocketService {
     this.socket.emit('send_command', { target, payload });
   }
 
-  // Paro de emergencia
-  emergencyStop() {
+  // Enviar comando con acción
+  sendCommand(action) {
     if (!this.socket || !this.connected) {
       console.warn('Socket no conectado');
       return;
     }
-    console.log('🚨 Paro de emergencia activado');
-    this.socket.emit('emergency_stop', { timestamp: Date.now() });
+    console.log(`📤 Enviando comando: ${action}`);
+    this.socket.emit('command', { action });
+  }
+
+  // Paro de emergencia (mantener compatibilidad)
+  emergencyStop() {
+    this.sendCommand('stop');
   }
 
   // Solicitar la lista de dispositivos

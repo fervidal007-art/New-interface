@@ -1,4 +1,4 @@
-import { Battery, Clock } from 'lucide-react';
+import { Battery, Clock, Maximize2, Minimize2 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import ConnectionStatus from './ConnectionStatus';
 import DeviceSelector from './DeviceSelector';
@@ -6,6 +6,7 @@ import logoITESO from '../Public/Logo-ITESO-Principal-SinFondo.png';
 
 function Header({ batteryLevel, isConnected, onConnect, devices, selectedDevice, onDeviceChange, onRefresh, onOpenLogs, logsDisabled }) {
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -14,6 +15,27 @@ function Header({ batteryLevel, isConnected, onConnect, devices, selectedDevice,
 
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  const toggleFullscreen = async () => {
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+      } else {
+        await document.exitFullscreen();
+      }
+    } catch (err) {
+      console.error('Error al cambiar pantalla completa:', err);
+    }
+  };
 
   return (
     <div className="header">
@@ -42,6 +64,14 @@ function Header({ batteryLevel, isConnected, onConnect, devices, selectedDevice,
           <Battery size={16} />
           <span className="status-battery">{batteryLevel}%</span>
         </div>
+        <button
+          className="header-fullscreen-btn"
+          onClick={toggleFullscreen}
+          aria-label="Pantalla completa"
+          title={isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
+        >
+          {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+        </button>
         <button
           className="header-logs-btn"
           onClick={onOpenLogs}

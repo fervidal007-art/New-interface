@@ -9,8 +9,9 @@ function RotationButtons({ onRotate, disabled }) {
     
     setPressedButton(direction);
     
-    const rotation = direction === 'left' ? -1 : 1;
-    onRotate({ x: rotation, y: 0 });
+    // Mapear dirección a nombre de acción
+    const action = direction === 'left' ? 'giro_izq' : 'giro_der';
+    onRotate(action);
   };
 
   const handleButtonRelease = () => {
@@ -32,7 +33,7 @@ function RotationButtons({ onRotate, disabled }) {
         onTouchEnd={handleButtonRelease}
         disabled={disabled}
       >
-        <RotateCcw size={32} />
+        <RotateCcw size={40} />
         <span>Izquierda</span>
       </button>
       
@@ -45,7 +46,7 @@ function RotationButtons({ onRotate, disabled }) {
         onTouchEnd={handleButtonRelease}
         disabled={disabled}
       >
-        <RotateCw size={32} />
+        <RotateCw size={40} />
         <span>Derecha</span>
       </button>
     </div>

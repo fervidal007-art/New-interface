@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight } from 'lucide-react';
+import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight, ArrowUpLeft, ArrowUpRight, ArrowDownLeft, ArrowDownRight } from 'lucide-react';
 import EmergencyButton from './EmergencyButton';
 
 function MovementButtons({ onMove, disabled, onEmergencyStop, emergencyStopActive }) {
@@ -10,35 +10,38 @@ function MovementButtons({ onMove, disabled, onEmergencyStop, emergencyStopActiv
     
     setPressedButton(direction);
     
-    let x = 0;
-    let y = 0;
-    
+    // Mapear dirección a nombre de acción
+    let action = '';
     switch (direction) {
       case 'up':
-        // Arriba = Avanzar (movimiento hacia adelante en Y)
-        y = 1;
-        x = 0;
+        action = 'adelante';
         break;
       case 'down':
-        // Abajo = Retroceder (movimiento hacia atrás en Y)
-        y = -1;
-        x = 0;
+        action = 'atras';
         break;
       case 'left':
-        // Izquierda = Movimiento lateral izquierdo (movimiento en X negativo)
-        x = -1;
-        y = 0;
+        action = 'izquierda';
         break;
       case 'right':
-        // Derecha = Movimiento lateral derecho (movimiento en X positivo)
-        x = 1;
-        y = 0;
+        action = 'derecha';
+        break;
+      case 'up-left':
+        action = 'diag_izq_arr';
+        break;
+      case 'up-right':
+        action = 'diag_der_arr';
+        break;
+      case 'down-left':
+        action = 'diag_izq_abj';
+        break;
+      case 'down-right':
+        action = 'diag_der_abj';
         break;
       default:
-        break;
+        return;
     }
     
-    onMove({ x, y });
+    onMove(action);
   };
 
   const handleButtonRelease = () => {
@@ -51,6 +54,21 @@ function MovementButtons({ onMove, disabled, onEmergencyStop, emergencyStopActiv
 
   return (
     <div className="movement-buttons">
+      {/* Diagonal superior izquierda */}
+      <button
+        className={`movement-btn diagonal up-left ${pressedButton === 'up-left' ? 'pressed' : ''}`}
+        onMouseDown={() => handleButtonPress('up-left')}
+        onMouseUp={handleButtonRelease}
+        onMouseLeave={handleButtonRelease}
+        onTouchStart={() => handleButtonPress('up-left')}
+        onTouchEnd={handleButtonRelease}
+        disabled={disabled}
+        aria-label="Diagonal superior izquierda"
+      >
+        <ArrowUpLeft size={32} />
+      </button>
+      
+      {/* Arriba */}
       <button
         className={`movement-btn up ${pressedButton === 'up' ? 'pressed' : ''}`}
         onMouseDown={() => handleButtonPress('up')}
@@ -61,9 +79,24 @@ function MovementButtons({ onMove, disabled, onEmergencyStop, emergencyStopActiv
         disabled={disabled}
         aria-label="Arriba"
       >
-        <ArrowUp size={28} />
+        <ArrowUp size={36} />
       </button>
       
+      {/* Diagonal superior derecha */}
+      <button
+        className={`movement-btn diagonal up-right ${pressedButton === 'up-right' ? 'pressed' : ''}`}
+        onMouseDown={() => handleButtonPress('up-right')}
+        onMouseUp={handleButtonRelease}
+        onMouseLeave={handleButtonRelease}
+        onTouchStart={() => handleButtonPress('up-right')}
+        onTouchEnd={handleButtonRelease}
+        disabled={disabled}
+        aria-label="Diagonal superior derecha"
+      >
+        <ArrowUpRight size={24} />
+      </button>
+      
+      {/* Izquierda */}
       <button
         className={`movement-btn left ${pressedButton === 'left' ? 'pressed' : ''}`}
         onMouseDown={() => handleButtonPress('left')}
@@ -74,16 +107,19 @@ function MovementButtons({ onMove, disabled, onEmergencyStop, emergencyStopActiv
         disabled={disabled}
         aria-label="Izquierda"
       >
-        <ArrowLeft size={28} />
+        <ArrowLeft size={36} />
       </button>
       
+      {/* Centro - Botón de paro */}
       <div className="movement-center">
         <EmergencyButton 
           onEmergencyStop={onEmergencyStop}
           emergencyStopActive={emergencyStopActive}
+          disabled={disabled}
         />
       </div>
       
+      {/* Derecha */}
       <button
         className={`movement-btn right ${pressedButton === 'right' ? 'pressed' : ''}`}
         onMouseDown={() => handleButtonPress('right')}
@@ -94,9 +130,24 @@ function MovementButtons({ onMove, disabled, onEmergencyStop, emergencyStopActiv
         disabled={disabled}
         aria-label="Derecha"
       >
-        <ArrowRight size={28} />
+        <ArrowRight size={36} />
       </button>
       
+      {/* Diagonal inferior izquierda */}
+      <button
+        className={`movement-btn diagonal down-left ${pressedButton === 'down-left' ? 'pressed' : ''}`}
+        onMouseDown={() => handleButtonPress('down-left')}
+        onMouseUp={handleButtonRelease}
+        onMouseLeave={handleButtonRelease}
+        onTouchStart={() => handleButtonPress('down-left')}
+        onTouchEnd={handleButtonRelease}
+        disabled={disabled}
+        aria-label="Diagonal inferior izquierda"
+      >
+        <ArrowDownLeft size={24} />
+      </button>
+      
+      {/* Abajo */}
       <button
         className={`movement-btn down ${pressedButton === 'down' ? 'pressed' : ''}`}
         onMouseDown={() => handleButtonPress('down')}
@@ -107,7 +158,21 @@ function MovementButtons({ onMove, disabled, onEmergencyStop, emergencyStopActiv
         disabled={disabled}
         aria-label="Abajo"
       >
-        <ArrowDown size={28} />
+        <ArrowDown size={36} />
+      </button>
+      
+      {/* Diagonal inferior derecha */}
+      <button
+        className={`movement-btn diagonal down-right ${pressedButton === 'down-right' ? 'pressed' : ''}`}
+        onMouseDown={() => handleButtonPress('down-right')}
+        onMouseUp={handleButtonRelease}
+        onMouseLeave={handleButtonRelease}
+        onTouchStart={() => handleButtonPress('down-right')}
+        onTouchEnd={handleButtonRelease}
+        disabled={disabled}
+        aria-label="Diagonal inferior derecha"
+      >
+        <ArrowDownRight size={24} />
       </button>
     </div>
   );

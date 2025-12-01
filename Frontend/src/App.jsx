@@ -3,7 +3,6 @@ import Header from './components/Header';
 import SpeedDisplay from './components/SpeedDisplay';
 import MovementButtons from './components/MovementButtons';
 import RotationButtons from './components/RotationButtons';
-import ControlPanel from './components/ControlPanel';
 import Stats from './components/Stats';
 import LogsModal from './components/LogsModal';
 import EmergencyButton from './components/EmergencyButton';
@@ -15,7 +14,6 @@ function App() {
   const [direction, setDirection] = useState(45);
   const [gpsCoords] = useState({ lat: 41.40338, lng: 2.17403 });
   const [batteryLevel, setBatteryLevel] = useState(55);
-  const [mode, setMode] = useState('manual');
   const [movementInput, setMovementInput] = useState({ x: 0, y: 0 });
   const [rotationInput, setRotationInput] = useState({ x: 0, y: 0 });
   const [isConnected, setIsConnected] = useState(false);
@@ -23,9 +21,9 @@ function App() {
   const [selectedDevice, setSelectedDevice] = useState('');
   const [conversations, setConversations] = useState({});
   const [isLogsOpen, setIsLogsOpen] = useState(false);
-  const [movementLocked, setMovementLocked] = useState(false); // Bloqueo para cambio de movimiento
-  const [speedLevel, setSpeedLevel] = useState(1); // Nivel de velocidad 1-5 (default: 1)
-  const [emergencyStopActive, setEmergencyStopActive] = useState(false); // Variable global de paro - ROMPE TODO
+  const [movementLocked, setMovementLocked] = useState(false);
+  const [speedLevel, setSpeedLevel] = useState(1);
+  const [emergencyStopActive, setEmergencyStopActive] = useState(false);
 
   const handleDeviceList = useCallback(
     (data = {}) => {
@@ -119,18 +117,54 @@ function App() {
     setSpeed(Math.round(magnitude * maxSpeed));
   }, [movementInput]);
 
-  const handleMovement = (input) => {
+  const handleMovement = (action) => {
     // 🚨 PARO GLOBAL: Si el paro está activo, BLOQUEAR TODO
     if (emergencyStopActive) {
       console.log('🚨 PARO ACTIVO: Comando de movimiento bloqueado');
       return;
     }
     
+    // Mapear acción a coordenadas para el estado local (para visualización)
+    let x = 0;
+    let y = 0;
+    switch (action) {
+      case 'adelante':
+        y = 1;
+        break;
+      case 'atras':
+        y = -1;
+        break;
+      case 'izquierda':
+        x = -1;
+        break;
+      case 'derecha':
+        x = 1;
+        break;
+      case 'diag_izq_arr':
+        x = -0.707;
+        y = 0.707;
+        break;
+      case 'diag_der_arr':
+        x = 0.707;
+        y = 0.707;
+        break;
+      case 'diag_izq_abj':
+        x = -0.707;
+        y = -0.707;
+        break;
+      case 'diag_der_abj':
+        x = 0.707;
+        y = -0.707;
+        break;
+      default:
+        break;
+    }
+    
     // Verificar si hay movimiento previo y no se ha presionado paro
     const hasPreviousMovement = movementInput.x !== 0 || movementInput.y !== 0;
-    const hasNewMovement = input.x !== 0 || input.y !== 0;
+    const hasNewMovement = x !== 0 || y !== 0;
     const isChangingDirection = hasPreviousMovement && hasNewMovement && 
-                                (movementInput.x !== input.x || movementInput.y !== input.y);
+                                (movementInput.x !== x || movementInput.y !== y);
     
     // Si está cambiando de dirección y está bloqueado, no permitir
     if (isChangingDirection && movementLocked) {
@@ -138,57 +172,50 @@ function App() {
       return;
     }
     
-    // Si se suelta el botón (todo en 0), NO hacer nada - mantener el último comando
-    // Solo el botón de paro puede detener el movimiento
-    if (!hasNewMovement) {
-      return; // No actualizar estado ni enviar comando
-    }
-    
-    // Si hay nuevo movimiento, activar el bloqueo y enviar comando UNA VEZ
+    // Si hay nuevo movimiento, activar el bloqueo y enviar comando
     if (hasNewMovement) {
       setMovementLocked(true);
-      setMovementInput(input);
+      setMovementInput({ x, y });
       
-      // Aplicar nivel de velocidad (1-5, donde 1=20%, 2=40%, ..., 5=100%)
-      const speedMultiplier = speedLevel / 5;
-      const scaledX = input.x * speedMultiplier;
-      const scaledY = input.y * speedMultiplier;
-      
-      // Enviar comando SOLO cuando hay un nuevo movimiento (no repetir)
+      // Enviar comando con el nombre de la acción
       if (isConnected) {
-        socketService.sendMovement(selectedDevice, scaledX, scaledY, rotationInput.x);
+        socketService.sendCommand(action);
       }
     }
   };
 
-  const handleRotation = (input) => {
+  const handleRotation = (action) => {
     // 🚨 PARO GLOBAL: Si el paro está activo, BLOQUEAR TODO
     if (emergencyStopActive) {
       console.log('🚨 PARO ACTIVO: Comando de rotación bloqueado');
       return;
     }
     
-    // Si se suelta el botón (rotación en 0), NO hacer nada - mantener el último comando
-    if (input.x === 0) {
-      return; // No actualizar estado ni enviar comando
+    // Mapear acción a rotación para el estado local (para visualización)
+    let rotation = 0;
+    switch (action) {
+      case 'giro_izq':
+        rotation = -1;
+        break;
+      case 'giro_der':
+        rotation = 1;
+        break;
+      default:
+        return;
     }
     
-    // Solo enviar comando cuando hay nueva rotación (no repetir)
-    setRotationInput(input);
+    setRotationInput({ x: rotation, y: 0 });
 
     setDirection(prev => {
-      let newDir = prev + input.x * 5;
+      let newDir = prev + rotation * 5;
       if (newDir < 0) newDir += 360;
       if (newDir >= 360) newDir -= 360;
       return newDir;
     });
 
-    // Aplicar nivel de velocidad a la rotación
-    const speedMultiplier = speedLevel / 5;
-    const scaledRotation = input.x * speedMultiplier;
-
+    // Enviar comando con el nombre de la acción
     if (isConnected) {
-      socketService.sendMovement(selectedDevice, movementInput.x, movementInput.y, scaledRotation);
+      socketService.sendCommand(action);
     }
   };
 
@@ -208,7 +235,7 @@ function App() {
       
       // Enviar comando de paro al backend
       if (isConnected) {
-        socketService.emergencyStop();
+        socketService.sendCommand('stop');
       }
     } else {
       console.log('✅ PARO DE EMERGENCIA DESACTIVADO - Sistema listo para operar');
@@ -257,12 +284,6 @@ function App() {
           />
         </div>
 
-        <div className="center-controls">
-          <ControlPanel 
-            mode={mode}
-            onModeChange={setMode}
-          />
-        </div>
 
         <div className="right-buttons">
           <RotationButtons 

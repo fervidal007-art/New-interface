@@ -29,3 +29,6 @@ function SpeedControl({ speedLevel, onSpeedChange, disabled }) {
 
 export default SpeedControl;
 
+
+
+
