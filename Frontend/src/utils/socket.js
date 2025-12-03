@@ -2,9 +2,17 @@ import { io } from 'socket.io-client';
 
 // Configuración dinámica del servidor backend
 // Usa la misma IP que el frontend pero en el puerto 5000
+// Si el frontend se accede desde la misma máquina que el backend, esto funciona perfectamente
 const protocol = window.location.protocol;
 const hostname = window.location.hostname;
 const BACKEND_URL = `${protocol}//${hostname}:5000`;
+
+// Nota: El backend escucha en 0.0.0.0:5000, lo que significa que acepta conexiones desde cualquier IP.
+// El frontend usa window.location.hostname para detectar automáticamente la IP correcta.
+// Esto funciona porque:
+// - Si accedes desde http://10.42.0.1:5173 → se conecta a http://10.42.0.1:5000 ✅
+// - Si accedes desde http://localhost:5173 → se conecta a http://localhost:5000 ✅
+// - El backend en 0.0.0.0:5000 acepta conexiones desde ambas IPs ✅
 
 class SocketService {
   constructor() {
@@ -12,6 +20,8 @@ class SocketService {
     this.connected = false;
     this.deviceName = 'ControlPanel';
     this.listenersSetup = false; // Bandera para rastrear si los listeners básicos están configurados
+    this.lastErrorTime = 0; // Para limitar la frecuencia de mensajes de error
+    this.errorCooldown = 5000; // Mostrar error completo solo cada 5 segundos
   }
 
   connect() {
@@ -22,11 +32,28 @@ class SocketService {
       return this.socket;
     }
 
-    // Si ya existe un socket pero no está conectado, limpiarlo primero
-    if (this.socket && !this.socket.connected) {
-      console.log('🧹 Limpiando socket anterior no conectado');
-      this.socket.removeAllListeners();
-      this.socket.disconnect();
+    // Si ya existe un socket pero no está conectado, limpiarlo de forma segura
+    if (this.socket) {
+      const socketState = this.socket.io?.readyState || 'unknown';
+      console.log(`🧹 Limpiando socket anterior (estado: ${socketState})`);
+      
+      // Remover listeners primero para evitar errores
+      try {
+        this.socket.removeAllListeners();
+      } catch (e) {
+        console.warn('Error al remover listeners:', e);
+      }
+      
+      // Solo desconectar si el socket no está en proceso de conexión
+      // Los estados de socket.io son: 'opening', 'open', 'closing', 'closed'
+      if (socketState !== 'opening') {
+        try {
+          this.socket.disconnect();
+        } catch (e) {
+          console.warn('Error al desconectar socket:', e);
+        }
+      }
+      
       this.socket = null;
       this.listenersSetup = false;
     }
@@ -56,11 +83,21 @@ class SocketService {
 
       this.socket.on('connect_error', (error) => {
         const errorMsg = error.message || 'Error desconocido';
-        console.error('❌ Error de conexión:', errorMsg);
-        console.error(`   URL intentada: ${BACKEND_URL}`);
-        console.error('   Verifica que el servidor backend esté corriendo:');
-        console.error('   - Ejecuta: ./run_backend.sh');
-        console.error('   - O manualmente: cd Backend && python3 server.py');
+        const now = Date.now();
+        const timeSinceLastError = now - this.lastErrorTime;
+        
+        // Mostrar mensaje completo solo cada 5 segundos para evitar spam
+        if (timeSinceLastError > this.errorCooldown) {
+          console.error('❌ Error de conexión:', errorMsg);
+          console.error(`   URL intentada: ${BACKEND_URL}`);
+          console.error('   Verifica que el servidor backend esté corriendo:');
+          console.error('   - Ejecuta: ./run_backend.sh');
+          console.error('   - O manualmente: cd Backend && python3 server.py');
+          this.lastErrorTime = now;
+        } else {
+          // Mensaje breve durante los intentos de reconexión
+          console.warn('⚠️ Intentando reconectar... (el servidor backend no está disponible)');
+        }
         this.connected = false;
       });
 

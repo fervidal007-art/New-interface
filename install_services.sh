@@ -263,6 +263,24 @@ if command -v npm &> /dev/null; then
     echo "   ✅ Ruta de npm actualizada: $NPM_PATH"
 fi
 
+# Actualizar ruta de Python en el servicio backend (importante para venv)
+PYTHON_VENV_PATH="$BACKEND_VENV/bin/python3"
+if [ -f "$PYTHON_VENV_PATH" ]; then
+    sed -i "s|/home/admin/New-interface/Backend/venv/bin/python3|$PYTHON_VENV_PATH|g" "$SERVICE_DIR/robomesha-backend.service"
+    echo "   ✅ Ruta de Python (venv) actualizada: $PYTHON_VENV_PATH"
+else
+    echo "   ⚠️  Advertencia: No se encontró Python en venv, el servicio usará la ruta por defecto"
+fi
+
+# Actualizar WorkingDirectory en ambos servicios
+sed -i "s|WorkingDirectory=/home/admin/New-interface|WorkingDirectory=$PROJECT_DIR|g" "$SERVICE_DIR/robomesha-backend.service"
+sed -i "s|WorkingDirectory=/home/admin/New-interface/Frontend|WorkingDirectory=$FRONTEND_DIR|g" "$SERVICE_DIR/robomesha-frontend.service"
+echo "   ✅ WorkingDirectory actualizado en ambos servicios"
+
+# Actualizar variable de entorno PATH en el servicio backend
+sed -i "s|Environment=\"PATH=/home/admin/New-interface/Backend/venv/bin:|Environment=\"PATH=$BACKEND_VENV/bin:|g" "$SERVICE_DIR/robomesha-backend.service"
+echo "   ✅ Variable PATH actualizada en el servicio backend"
+
 # Verificar permisos del venv (importante para systemd)
 if [ -d "$BACKEND_VENV" ]; then
     echo "🔐 Ajustando permisos del entorno virtual..."
