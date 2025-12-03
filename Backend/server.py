@@ -101,13 +101,13 @@ def atras():
     print(f">> ATRAS {v}")
     driver.enviar_velocidad(v)
 
-def izquierda():
+def derecha():
     # Strafe Izquierda: M1(-), M2(+), M3(+), M4(-)
     v = [-VELOCIDAD, VELOCIDAD, VELOCIDAD, -VELOCIDAD]
     print(f">> IZQUIERDA {v}")
     driver.enviar_velocidad(v)
 
-def derecha():
+def izquierda():
     # Strafe Derecha: M1(+), M2(-), M3(-), M4(+)
     v = [VELOCIDAD, -VELOCIDAD, -VELOCIDAD, VELOCIDAD]
     print(f">> DERECHA {v}")
@@ -115,13 +115,13 @@ def derecha():
 
 def giro_derecha():
     # Girar sobre su eje a la izquierda: Izquierdos(-), Derechos(+)
-    v = [-VELOCIDAD, -VELOCIDAD, VELOCIDAD, VELOCIDAD]
+    v = [-VELOCIDAD, VELOCIDAD, -VELOCIDAD, VELOCIDAD]
     print(f">> GIRO IZQ {v}")
     driver.enviar_velocidad(v)
 
 def giro_izquierda():
     # Girar sobre su eje a la derecha: Izquierdos(+), Derechos(-)
-    v = [VELOCIDAD, VELOCIDAD, -VELOCIDAD, -VELOCIDAD]
+    v = [VELOCIDAD, -VELOCIDAD, VELOCIDAD, -VELOCIDAD]
     print(f">> GIRO DER {v}")
     driver.enviar_velocidad(v)
 
