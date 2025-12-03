@@ -19,7 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 # ---------- Inicialización I2C ----------
 try:
     import smbus2 as smbus
-    bus = smbus.SMBus(0)
+    bus = smbus.SMBus(1)
     try:
         bus.write_quick(0x34)
         I2C_DISPONIBLE = True
