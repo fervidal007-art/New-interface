@@ -123,12 +123,6 @@ function App() {
   }, [movementInput]);
 
   const handleMovement = (action) => {
-    // 🚨 PARO GLOBAL: Si el paro está activo, BLOQUEAR TODO
-    if (emergencyStopActive) {
-      console.log('🚨 PARO ACTIVO: Comando de movimiento bloqueado');
-      return;
-    }
-    
     // Mapear acción a coordenadas para el estado local (para visualización)
     let x = 0;
     let y = 0;
@@ -190,12 +184,6 @@ function App() {
   };
 
   const handleRotation = (action) => {
-    // 🚨 PARO GLOBAL: Si el paro está activo, BLOQUEAR TODO
-    if (emergencyStopActive) {
-      console.log('🚨 PARO ACTIVO: Comando de rotación bloqueado');
-      return;
-    }
-    
     // Mapear acción a rotación para el estado local (para visualización)
     let rotation = 0;
     switch (action) {
@@ -225,27 +213,26 @@ function App() {
   };
 
   const handleEmergencyStop = () => {
-    // 🚨 PARO GLOBAL: Activar/Desactivar paro de emergencia
-    const newStopState = !emergencyStopActive;
-    setEmergencyStopActive(newStopState);
+    console.log('🛑 PARO DE EMERGENCIA: Deteniendo motores');
     
-    if (newStopState) {
-      console.log('🚨 PARO DE EMERGENCIA ACTIVADO - TODOS LOS COMANDOS BLOQUEADOS');
-      
-      // Resetear estado local INMEDIATAMENTE
-      setMovementInput({ x: 0, y: 0 });
-      setRotationInput({ x: 0, y: 0 });
-      setSpeed(0);
-      setMovementLocked(false);
-      
-      // Enviar comando de paro al backend
-      if (isConnected) {
-        socketService.sendCommand('stop');
-      }
-    } else {
-      console.log('✅ PARO DE EMERGENCIA DESACTIVADO - Sistema listo para operar');
-      // Al desactivar, el sistema queda listo pero no envía comandos hasta que se presione un botón
+    // Resetear estado local INMEDIATAMENTE
+    setMovementInput({ x: 0, y: 0 });
+    setRotationInput({ x: 0, y: 0 });
+    setSpeed(0);
+    setMovementLocked(false);
+    
+    // Enviar comando de paro al backend
+    if (isConnected) {
+      socketService.sendCommand('stop');
     }
+    
+    // El botón puede mostrar un estado visual temporal, pero no bloquea la interfaz
+    // El estado emergencyStopActive solo se usa para indicación visual
+    setEmergencyStopActive(true);
+    // Desactivar el estado visual después de un breve momento
+    setTimeout(() => {
+      setEmergencyStopActive(false);
+    }, 500);
   };
 
   const currentConversation = useMemo(() => {
@@ -283,7 +270,7 @@ function App() {
         <div className="left-buttons">
           <MovementButtons 
             onMove={handleMovement}
-            disabled={!isConnected || !selectedDevice || emergencyStopActive}
+            disabled={!isConnected || !selectedDevice}
             onEmergencyStop={handleEmergencyStop}
             emergencyStopActive={emergencyStopActive}
           />
@@ -293,7 +280,7 @@ function App() {
         <div className="right-buttons">
           <RotationButtons 
             onRotate={handleRotation}
-            disabled={!isConnected || !selectedDevice || emergencyStopActive}
+            disabled={!isConnected || !selectedDevice}
           />
         </div>
       </div>

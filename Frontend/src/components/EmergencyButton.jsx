@@ -6,7 +6,10 @@ function EmergencyButton({ onEmergencyStop, emergencyStopActive, disabled }) {
 
   const handlePress = (e) => {
     if (disabled) return;
-    e.preventDefault();
+    // Solo prevenir default si no es un evento pasivo
+    if (e.cancelable) {
+      e.preventDefault();
+    }
     e.stopPropagation();
     
     setIsPressed(true);
@@ -16,7 +19,10 @@ function EmergencyButton({ onEmergencyStop, emergencyStopActive, disabled }) {
 
   const handleRelease = (e) => {
     if (disabled) return;
-    e.preventDefault();
+    // Solo prevenir default si no es un evento pasivo
+    if (e.cancelable) {
+      e.preventDefault();
+    }
     e.stopPropagation();
     setIsPressed(false);
   };
