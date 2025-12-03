@@ -146,3 +146,4 @@ Comandos disponibles:
 - `diag_izq_abj` - Diagonal izquierda abajo
 - `diag_der_abj` - Diagonal derecha abajo
 
+

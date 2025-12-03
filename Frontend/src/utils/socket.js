@@ -1,11 +1,12 @@
 import { io } from 'socket.io-client';
 
-// Configuración dinámica del servidor backend
-// Usa la misma IP que el frontend pero en el puerto 5000
-// Si el frontend se accede desde la misma máquina que el backend, esto funciona perfectamente
+// IP de la Raspberry Pi (ajusta si es necesario)
+const RASPBERRY_PI_IP = '10.42.0.1';
+
+// Configuración del servidor backend
+// Conecta siempre a la IP de la Raspberry Pi en el puerto 5000
 const protocol = window.location.protocol;
-const hostname = window.location.hostname;
-const BACKEND_URL = `${protocol}//${hostname}:5000`;
+const BACKEND_URL = `${protocol}//${RASPBERRY_PI_IP}:5000`;
 
 // Nota: El backend escucha en 0.0.0.0:5000, lo que significa que acepta conexiones desde cualquier IP.
 // El frontend usa window.location.hostname para detectar automáticamente la IP correcta.
