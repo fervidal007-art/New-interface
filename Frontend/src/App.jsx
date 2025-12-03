@@ -159,7 +159,7 @@ function App() {
         break;
     }
     
-    // Verificar si hay movimiento previo y no se ha presionado paro
+    // Verificar si hay movimiento previo
     const hasPreviousMovement = movementInput.x !== 0 || movementInput.y !== 0;
     const hasNewMovement = x !== 0 || y !== 0;
     const isChangingDirection = hasPreviousMovement && hasNewMovement && 
@@ -171,15 +171,16 @@ function App() {
       return;
     }
     
-    // Si hay nuevo movimiento, activar el bloqueo y enviar comando
+    // Si hay nuevo movimiento, enviar comando SIEMPRE (incluso si es el mismo botón)
+    // IMPORTANTE: Enviar el comando ANTES de actualizar el estado para asegurar que siempre se ejecute
+    if (hasNewMovement && isConnected) {
+      socketService.sendCommand(action);
+    }
+    
+    // Actualizar estado después de enviar el comando
     if (hasNewMovement) {
       setMovementLocked(true);
       setMovementInput({ x, y });
-      
-      // Enviar comando con el nombre de la acción
-      if (isConnected) {
-        socketService.sendCommand(action);
-      }
     }
   };
 
