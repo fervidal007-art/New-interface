@@ -294,6 +294,18 @@ function App() {
             setSpeedLevel(level);
             if (isConnected) {
               socketService.setSpeed(level);
+              
+              // Si hay un movimiento activo, reenviar el comando con la nueva velocidad
+              if (activeMovement) {
+                console.log(`🔄 Reenviando movimiento activo (${activeMovement}) con nueva velocidad`);
+                socketService.sendCommand(activeMovement);
+              }
+              
+              // Si hay un giro activo, reenviar el comando con la nueva velocidad
+              if (activeRotation) {
+                console.log(`🔄 Reenviando giro activo (${activeRotation}) con nueva velocidad`);
+                socketService.sendCommand(activeRotation);
+              }
             }
           }}
           disabled={!isConnected || !selectedDevice}
@@ -312,6 +324,7 @@ function App() {
             onEmergencyStop={handleEmergencyStop}
             emergencyStopActive={emergencyStopActive}
             activeMovement={activeMovement}
+            emergencyStopDisabled={!isConnected || !selectedDevice}
           />
         </div>
 

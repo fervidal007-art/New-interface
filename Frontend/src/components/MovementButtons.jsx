@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight, ArrowUpLeft, ArrowUpRight, ArrowDownLeft, ArrowDownRight } from 'lucide-react';
 import EmergencyButton from './EmergencyButton';
 
-function MovementButtons({ onMove, disabled, onEmergencyStop, emergencyStopActive, activeMovement }) {
+function MovementButtons({ onMove, disabled, onEmergencyStop, emergencyStopActive, activeMovement, emergencyStopDisabled }) {
   // Mapear el movimiento activo a la dirección del botón
   const getActiveButton = () => {
     if (!activeMovement) return null;
@@ -132,7 +132,7 @@ function MovementButtons({ onMove, disabled, onEmergencyStop, emergencyStopActiv
         <EmergencyButton 
           onEmergencyStop={onEmergencyStop}
           emergencyStopActive={emergencyStopActive}
-          disabled={disabled}
+          disabled={emergencyStopDisabled !== undefined ? emergencyStopDisabled : disabled}
         />
       </div>
       
