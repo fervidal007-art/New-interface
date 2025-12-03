@@ -328,22 +328,81 @@ fi
 
 # Reiniciar servicios para aplicar cambios
 echo ""
-echo "🚀 Reiniciando servicios con la nueva configuración..."
+echo "🚀 Iniciando servicios con la nueva configuración..."
+echo ""
+
+# Iniciar backend
+echo "📡 Iniciando backend..."
 systemctl start robomesha-backend.service
+sleep 3  # Esperar a que el backend se inicie completamente
+
+# Verificar que el backend esté corriendo
+BACKEND_RETRIES=0
+MAX_BACKEND_RETRIES=5
+while [ $BACKEND_RETRIES -lt $MAX_BACKEND_RETRIES ]; do
+    if systemctl is-active --quiet robomesha-backend.service; then
+        # Verificar que el servidor esté respondiendo
+        if curl -s -f http://localhost:5000/health > /dev/null 2>&1; then
+            echo "   ✅ Backend está corriendo y respondiendo en http://localhost:5000"
+            break
+        else
+            echo "   ⏳ Backend iniciado, esperando respuesta HTTP... (intento $((BACKEND_RETRIES + 1))/$MAX_BACKEND_RETRIES)"
+            sleep 2
+        fi
+    else
+        echo "   ⏳ Esperando inicio del backend... (intento $((BACKEND_RETRIES + 1))/$MAX_BACKEND_RETRIES)"
+        sleep 2
+    fi
+    BACKEND_RETRIES=$((BACKEND_RETRIES + 1))
+done
+
+if [ $BACKEND_RETRIES -eq $MAX_BACKEND_RETRIES ]; then
+    echo "   ⚠️  El backend no respondió después de varios intentos"
+    echo "   Revisando logs del backend..."
+    echo ""
+    echo "   Últimas líneas del log:"
+    journalctl -u robomesha-backend.service -n 20 --no-pager || true
+    echo ""
+    echo "   Para ver más detalles:"
+    echo "      sudo journalctl -u robomesha-backend -n 50"
+    echo ""
+    echo "   Intentando iniciar manualmente como fallback..."
+    # Intentar ejecutar el backend manualmente como fallback
+    if [ -f "$BACKEND_VENV/bin/python3" ] && [ -f "$BACKEND_DIR/server.py" ]; then
+        echo "   Ejecutando: $BACKEND_VENV/bin/python3 $BACKEND_DIR/server.py"
+        # Ejecutar en background para no bloquear
+        su - "$CURRENT_USER" -c "cd '$BACKEND_DIR' && source venv/bin/activate && nohup python3 server.py > /tmp/robomesha-backend.log 2>&1 &" || true
+        sleep 2
+        if curl -s -f http://localhost:5000/health > /dev/null 2>&1; then
+            echo "   ✅ Backend iniciado manualmente y respondiendo"
+        else
+            echo "   ❌ Backend no responde. Revisa los logs manualmente"
+        fi
+    fi
+fi
+
+# Iniciar frontend
+echo ""
+echo "🎨 Iniciando frontend..."
 sleep 2  # Esperar un poco antes de iniciar el frontend
 systemctl start robomesha-frontend.service
+sleep 3  # Esperar a que el frontend se inicie
 
-# Esperar un momento y verificar estado
-sleep 3
+# Verificar estado final
 echo ""
-echo "📊 Verificando estado de los servicios..."
+echo "📊 Verificando estado final de los servicios..."
 echo ""
 
 if systemctl is-active --quiet robomesha-backend.service; then
-    echo "   ✅ Backend está corriendo"
+    echo "   ✅ Backend (systemd) está corriendo"
 else
-    echo "   ❌ Backend no está corriendo. Revisa los logs:"
-    echo "      sudo journalctl -u robomesha-backend -n 50"
+    # Verificar si está corriendo manualmente
+    if curl -s -f http://localhost:5000/health > /dev/null 2>&1; then
+        echo "   ✅ Backend está corriendo (modo manual)"
+    else
+        echo "   ❌ Backend no está corriendo. Revisa los logs:"
+        echo "      sudo journalctl -u robomesha-backend -n 50"
+    fi
 fi
 
 if systemctl is-active --quiet robomesha-frontend.service; then

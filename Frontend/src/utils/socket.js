@@ -5,9 +5,8 @@ const RASPBERRY_PI_IP = '10.42.0.1';
 
 // Configuración del servidor backend
 // Conecta siempre a la IP de la Raspberry Pi en el puerto 5000
-// Forzar http:// para evitar problemas de mixed content con https
-const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
-const BACKEND_URL = `${protocol}//${RASPBERRY_PI_IP}:5000`;
+// Usar siempre HTTP para evitar problemas de protocolo mixto
+const BACKEND_URL = `http://${RASPBERRY_PI_IP}:5000`;
 
 // Nota: El backend escucha en 0.0.0.0:5000, lo que significa que acepta conexiones desde cualquier IP.
 // El frontend usa window.location.hostname para detectar automáticamente la IP correcta.
@@ -69,11 +68,11 @@ class SocketService {
       reconnectionDelayMax: 5000,
       reconnectionAttempts: Infinity,
       timeout: 20000,
-      transports: ['websocket', 'polling'], // Intentar primero con websocket, luego con polling si falla
+      transports: ['websocket', 'polling'],
       forceNew: false, // Reutilizar conexiones cuando sea posible
-      upgrade: true,
-      rememberUpgrade: false,
-      withCredentials: false,
+      upgrade: true, // Permitir upgrade de polling a websocket
+      rememberUpgrade: true, // Recordar preferencia de transporte
+      withCredentials: false, // No enviar cookies (evita problemas CORS)
     });
 
     // Solo configurar listeners básicos una vez por instancia de socket
@@ -86,22 +85,40 @@ class SocketService {
         this.socket.emit('register', { role: 'operator', base_name: this.deviceName });
       });
 
-      this.socket.on('connect_error', (error) => {
+      this.socket.on('connect_error', async (error) => {
         const errorMsg = error.message || 'Error desconocido';
-        const errorType = error.type || 'unknown';
         const now = Date.now();
         const timeSinceLastError = now - this.lastErrorTime;
         
         // Mostrar mensaje completo solo cada 5 segundos para evitar spam
         if (timeSinceLastError > this.errorCooldown) {
           console.error('❌ Error de conexión:', errorMsg);
-          console.error(`   Tipo: ${errorType}`);
           console.error(`   URL intentada: ${BACKEND_URL}`);
-          console.error('   Verifica que el servidor backend esté corriendo:');
-          console.error('   - Ejecuta: ./run_backend.sh');
-          console.error('   - O manualmente: cd Backend && python3 server.py');
-          console.error('   - Verifica que el puerto 5000 esté accesible');
-          console.error('   - Verifica la conectividad de red a:', RASPBERRY_PI_IP);
+          
+          // Intentar verificar si el servidor HTTP está disponible
+          try {
+            const healthUrl = `${BACKEND_URL}/health`;
+            const response = await fetch(healthUrl, { 
+              method: 'GET',
+              mode: 'cors',
+              cache: 'no-cache'
+            });
+            if (response.ok) {
+              const data = await response.json();
+              console.warn('⚠️ El servidor HTTP responde, pero Socket.IO no se conecta');
+              console.warn(`   Estado del servidor: ${JSON.stringify(data)}`);
+            } else {
+              console.error(`   El servidor HTTP responde con error: ${response.status}`);
+            }
+          } catch (fetchError) {
+            console.error('   ❌ El servidor backend NO está disponible en:', BACKEND_URL);
+            console.error('   Verifica que:');
+            console.error('   1. El servidor esté corriendo: ./run_backend.sh');
+            console.error('   2. El servidor esté escuchando en 0.0.0.0:5000');
+            console.error('   3. No haya firewall bloqueando el puerto 5000');
+            console.error('   4. La IP de la Raspberry Pi sea correcta:', RASPBERRY_PI_IP);
+          }
+          
           this.lastErrorTime = now;
         } else {
           // Mensaje breve durante los intentos de reconexión
