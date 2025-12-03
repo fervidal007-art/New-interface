@@ -60,7 +60,10 @@ fi
 # Si es un repositorio git, actualizar código (opcional)
 if [ -d "$PROJECT_DIR/.git" ]; then
     echo "🔄 Detectado repositorio Git, actualizando código..."
-    su - "$CURRENT_USER" -c "cd '$PROJECT_DIR' && git pull" || echo "   ⚠️  No se pudo actualizar (puede que no haya cambios o haya conflictos)"
+    # Configurar estrategia de pull por defecto si no está configurada (merge por defecto)
+    su - "$CURRENT_USER" -c "cd '$PROJECT_DIR' && git config pull.rebase false 2>/dev/null || true"
+    # Intentar hacer pull con merge (más seguro que rebase)
+    su - "$CURRENT_USER" -c "cd '$PROJECT_DIR' && git pull --no-rebase" || echo "   ⚠️  No se pudo actualizar (puede que no haya cambios o haya conflictos)"
     echo ""
 fi
 
