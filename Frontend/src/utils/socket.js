@@ -5,7 +5,8 @@ const RASPBERRY_PI_IP = '10.42.0.1';
 
 // Configuración del servidor backend
 // Conecta siempre a la IP de la Raspberry Pi en el puerto 5000
-const protocol = window.location.protocol;
+// Forzar http:// para evitar problemas de mixed content con https
+const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
 const BACKEND_URL = `${protocol}//${RASPBERRY_PI_IP}:5000`;
 
 // Nota: El backend escucha en 0.0.0.0:5000, lo que significa que acepta conexiones desde cualquier IP.
@@ -68,8 +69,11 @@ class SocketService {
       reconnectionDelayMax: 5000,
       reconnectionAttempts: Infinity,
       timeout: 20000,
-      transports: ['websocket', 'polling'],
+      transports: ['websocket', 'polling'], // Intentar primero con websocket, luego con polling si falla
       forceNew: false, // Reutilizar conexiones cuando sea posible
+      upgrade: true,
+      rememberUpgrade: false,
+      withCredentials: false,
     });
 
     // Solo configurar listeners básicos una vez por instancia de socket
@@ -84,16 +88,20 @@ class SocketService {
 
       this.socket.on('connect_error', (error) => {
         const errorMsg = error.message || 'Error desconocido';
+        const errorType = error.type || 'unknown';
         const now = Date.now();
         const timeSinceLastError = now - this.lastErrorTime;
         
         // Mostrar mensaje completo solo cada 5 segundos para evitar spam
         if (timeSinceLastError > this.errorCooldown) {
           console.error('❌ Error de conexión:', errorMsg);
+          console.error(`   Tipo: ${errorType}`);
           console.error(`   URL intentada: ${BACKEND_URL}`);
           console.error('   Verifica que el servidor backend esté corriendo:');
           console.error('   - Ejecuta: ./run_backend.sh');
           console.error('   - O manualmente: cd Backend && python3 server.py');
+          console.error('   - Verifica que el puerto 5000 esté accesible');
+          console.error('   - Verifica la conectividad de red a:', RASPBERRY_PI_IP);
           this.lastErrorTime = now;
         } else {
           // Mensaje breve durante los intentos de reconexión

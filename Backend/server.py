@@ -171,7 +171,27 @@ app_fastapi.add_middleware(
     allow_headers=["*"],
 )
 
-sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')
+# Endpoint de salud para verificar que el servidor está funcionando
+@app_fastapi.get("/health")
+async def health_check():
+    """Endpoint de salud para verificar que el servidor está funcionando"""
+    return {
+        "status": "ok",
+        "driver_mode": "simulation" if driver.simulation_mode else "i2c",
+        "velocidad_actual": VELOCIDAD,
+        "connected_clients": len(connected_clients),
+        "registered_devices": len(registered_devices)
+    }
+
+# Configurar Socket.IO con CORS y opciones de conexión
+sio = socketio.AsyncServer(
+    async_mode='asgi',
+    cors_allowed_origins='*',
+    allow_upgrades=True,
+    ping_timeout=60,
+    ping_interval=25,
+    max_http_buffer_size=1e6
+)
 app = socketio.ASGIApp(sio, other_asgi_app=app_fastapi)
 
 # --- GESTIÓN DE DISPOSITIVOS Y CLIENTES ---
@@ -185,12 +205,17 @@ ROBOT_DEVICE_NAME = "RoboMesha"
 @sio.event
 async def connect(sid, environ):
     """Maneja la conexión de nuevos clientes"""
+    client_ip = environ.get('REMOTE_ADDR', 'unknown')
+    user_agent = environ.get('HTTP_USER_AGENT', 'unknown')
     print(f"[CONNECT] Cliente conectado: {sid}")
+    print(f"         IP: {client_ip}")
+    print(f"         User-Agent: {user_agent[:50]}...")
     connected_clients[sid] = {
         'role': None,
         'name': None,
         'device_name': None,
-        'connected_at': time.time()
+        'connected_at': time.time(),
+        'ip': client_ip
     }
 
 @sio.event
@@ -433,6 +458,9 @@ registered_devices[ROBOT_DEVICE_NAME] = {
 if __name__ == '__main__':
     print("🚀 Iniciando servidor RoboMesha...")
     print(f"🤖 Robot registrado: {ROBOT_DEVICE_NAME}")
-    print("📡 Escuchando en puerto 5000")
+    print("📡 Escuchando en 0.0.0.0:5000 (todas las interfaces de red)")
     print("🔌 Esperando conexiones de clientes...")
-    uvicorn.run(app, host='0.0.0.0', port=5000)
+    print("🌐 Socket.IO disponible en: ws://0.0.0.0:5000/socket.io/")
+    print("📋 Endpoint de salud: http://0.0.0.0:5000/health")
+    print("")
+    uvicorn.run(app, host='0.0.0.0', port=5000, log_level='info')
