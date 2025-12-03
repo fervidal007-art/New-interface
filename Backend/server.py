@@ -6,7 +6,11 @@ import socketio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
-import smbus
+try:
+    from smbus2 import SMBus
+except ImportError:
+    # Fallback para sistemas que no tienen smbus2 instalado
+    SMBus = None
 import time
 import struct
 
@@ -35,7 +39,9 @@ class HiwonderDriver:
         self.bus = None
         self.simulation_mode = False
         try:
-            self.bus = smbus.SMBus(I2C_BUS)
+            if SMBus is None:
+                raise ImportError("smbus2 no está instalado")
+            self.bus = SMBus(I2C_BUS)
             print(f"[INIT] Conexión I2C exitosa en bus {I2C_BUS}")
             self.init_motors()
         except Exception as e:

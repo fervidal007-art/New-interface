@@ -109,6 +109,15 @@ echo "📥 Instalando dependencias del backend..."
 if [ -f "$BACKEND_DIR/requirements.txt" ]; then
     su - "$CURRENT_USER" -c "cd '$BACKEND_DIR' && source venv/bin/activate && pip install --upgrade pip && pip install -r requirements.txt"
     echo "✅ Dependencias del backend instaladas"
+    
+    # Verificar que smbus2 esté instalado correctamente
+    echo "🔍 Verificando instalación de smbus2..."
+    if su - "$CURRENT_USER" -c "cd '$BACKEND_DIR' && source venv/bin/activate && python3 -c 'from smbus2 import SMBus; print(\"smbus2 OK\")'" 2>/dev/null; then
+        echo "   ✅ smbus2 instalado correctamente"
+    else
+        echo "   ⚠️  Advertencia: smbus2 no se pudo importar, intentando reinstalar..."
+        su - "$CURRENT_USER" -c "cd '$BACKEND_DIR' && source venv/bin/activate && pip install --force-reinstall smbus2" || echo "   ❌ Error al reinstalar smbus2"
+    fi
 else
     echo "⚠️  Advertencia: No se encuentra requirements.txt en Backend/"
 fi
