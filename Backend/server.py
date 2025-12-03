@@ -115,13 +115,13 @@ def izquierda():
     print(f">> IZQUIERDA - Velocidades: {v}")
     driver.enviar_velocidad(v)
 
-def giro_derecha():
+def giro_izquierda():
     """Gira el robot sobre su eje hacia la derecha: Izquierdos(-), Derechos(+)."""
     v = [-VELOCIDAD, VELOCIDAD, -VELOCIDAD, VELOCIDAD]
     print(f">> GIRO DERECHA - Velocidades: {v}")
     driver.enviar_velocidad(v)
 
-def giro_izquierda():
+def giro_derecha():
     """Gira el robot sobre su eje hacia la izquierda: Izquierdos(+), Derechos(-)."""
     v = [VELOCIDAD, -VELOCIDAD, VELOCIDAD, -VELOCIDAD]
     print(f">> GIRO IZQUIERDA - Velocidades: {v}")
