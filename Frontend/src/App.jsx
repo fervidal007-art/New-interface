@@ -274,6 +274,7 @@ function App() {
             disabled={!isConnected || !selectedDevice}
             onEmergencyStop={handleEmergencyStop}
             emergencyStopActive={emergencyStopActive}
+            activeMovement={movementInput}
           />
         </div>
 

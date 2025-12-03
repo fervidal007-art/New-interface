@@ -2,8 +2,29 @@ import { useState } from 'react';
 import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight, ArrowUpLeft, ArrowUpRight, ArrowDownLeft, ArrowDownRight } from 'lucide-react';
 import EmergencyButton from './EmergencyButton';
 
-function MovementButtons({ onMove, disabled, onEmergencyStop, emergencyStopActive }) {
+function MovementButtons({ onMove, disabled, onEmergencyStop, emergencyStopActive, activeMovement }) {
   const [pressedButton, setPressedButton] = useState(null);
+
+  // Mapear el movimiento activo a la dirección del botón
+  const getActiveButton = () => {
+    if (!activeMovement) return null;
+    
+    const { x, y } = activeMovement;
+    
+    // Mapear coordenadas a dirección del botón
+    if (x === 0 && y === 1) return 'up'; // adelante
+    if (x === 0 && y === -1) return 'down'; // atras
+    if (x === -1 && y === 0) return 'left'; // izquierda
+    if (x === 1 && y === 0) return 'right'; // derecha
+    if (Math.abs(x - (-0.707)) < 0.01 && Math.abs(y - 0.707) < 0.01) return 'up-left'; // diag_izq_arr
+    if (Math.abs(x - 0.707) < 0.01 && Math.abs(y - 0.707) < 0.01) return 'up-right'; // diag_der_arr
+    if (Math.abs(x - (-0.707)) < 0.01 && Math.abs(y - (-0.707)) < 0.01) return 'down-left'; // diag_izq_abj
+    if (Math.abs(x - 0.707) < 0.01 && Math.abs(y - (-0.707)) < 0.01) return 'down-right'; // diag_der_abj
+    
+    return null;
+  };
+
+  const activeButton = getActiveButton() || pressedButton;
 
   const handleButtonPress = (direction) => {
     if (disabled) return;
@@ -46,9 +67,8 @@ function MovementButtons({ onMove, disabled, onEmergencyStop, emergencyStopActiv
 
   const handleButtonRelease = () => {
     if (disabled) return;
-    // NO enviar comando de stop al soltar - mantener el último comando activo
-    // Solo el botón de paro puede detener el movimiento
-    setPressedButton(null);
+    // NO resetear el botón presionado al soltar - mantener activo hasta presionar paro
+    // El botón permanecerá activo visualmente basado en activeMovement
     // No llamar a onMove - mantener el último comando
   };
 
@@ -56,7 +76,7 @@ function MovementButtons({ onMove, disabled, onEmergencyStop, emergencyStopActiv
     <div className="movement-buttons">
       {/* Diagonal superior izquierda */}
       <button
-        className={`movement-btn diagonal up-left ${pressedButton === 'up-left' ? 'pressed' : ''}`}
+        className={`movement-btn diagonal up-left ${activeButton === 'up-left' ? 'pressed' : ''}`}
         onMouseDown={() => handleButtonPress('up-left')}
         onMouseUp={handleButtonRelease}
         onMouseLeave={handleButtonRelease}
@@ -70,7 +90,7 @@ function MovementButtons({ onMove, disabled, onEmergencyStop, emergencyStopActiv
       
       {/* Arriba */}
       <button
-        className={`movement-btn up ${pressedButton === 'up' ? 'pressed' : ''}`}
+        className={`movement-btn up ${activeButton === 'up' ? 'pressed' : ''}`}
         onMouseDown={() => handleButtonPress('up')}
         onMouseUp={handleButtonRelease}
         onMouseLeave={handleButtonRelease}
@@ -84,7 +104,7 @@ function MovementButtons({ onMove, disabled, onEmergencyStop, emergencyStopActiv
       
       {/* Diagonal superior derecha */}
       <button
-        className={`movement-btn diagonal up-right ${pressedButton === 'up-right' ? 'pressed' : ''}`}
+        className={`movement-btn diagonal up-right ${activeButton === 'up-right' ? 'pressed' : ''}`}
         onMouseDown={() => handleButtonPress('up-right')}
         onMouseUp={handleButtonRelease}
         onMouseLeave={handleButtonRelease}
@@ -98,7 +118,7 @@ function MovementButtons({ onMove, disabled, onEmergencyStop, emergencyStopActiv
       
       {/* Izquierda */}
       <button
-        className={`movement-btn left ${pressedButton === 'left' ? 'pressed' : ''}`}
+        className={`movement-btn left ${activeButton === 'left' ? 'pressed' : ''}`}
         onMouseDown={() => handleButtonPress('left')}
         onMouseUp={handleButtonRelease}
         onMouseLeave={handleButtonRelease}
@@ -121,7 +141,7 @@ function MovementButtons({ onMove, disabled, onEmergencyStop, emergencyStopActiv
       
       {/* Derecha */}
       <button
-        className={`movement-btn right ${pressedButton === 'right' ? 'pressed' : ''}`}
+        className={`movement-btn right ${activeButton === 'right' ? 'pressed' : ''}`}
         onMouseDown={() => handleButtonPress('right')}
         onMouseUp={handleButtonRelease}
         onMouseLeave={handleButtonRelease}
@@ -135,7 +155,7 @@ function MovementButtons({ onMove, disabled, onEmergencyStop, emergencyStopActiv
       
       {/* Diagonal inferior izquierda */}
       <button
-        className={`movement-btn diagonal down-left ${pressedButton === 'down-left' ? 'pressed' : ''}`}
+        className={`movement-btn diagonal down-left ${activeButton === 'down-left' ? 'pressed' : ''}`}
         onMouseDown={() => handleButtonPress('down-left')}
         onMouseUp={handleButtonRelease}
         onMouseLeave={handleButtonRelease}
@@ -149,7 +169,7 @@ function MovementButtons({ onMove, disabled, onEmergencyStop, emergencyStopActiv
       
       {/* Abajo */}
       <button
-        className={`movement-btn down ${pressedButton === 'down' ? 'pressed' : ''}`}
+        className={`movement-btn down ${activeButton === 'down' ? 'pressed' : ''}`}
         onMouseDown={() => handleButtonPress('down')}
         onMouseUp={handleButtonRelease}
         onMouseLeave={handleButtonRelease}
@@ -163,7 +183,7 @@ function MovementButtons({ onMove, disabled, onEmergencyStop, emergencyStopActiv
       
       {/* Diagonal inferior derecha */}
       <button
-        className={`movement-btn diagonal down-right ${pressedButton === 'down-right' ? 'pressed' : ''}`}
+        className={`movement-btn diagonal down-right ${activeButton === 'down-right' ? 'pressed' : ''}`}
         onMouseDown={() => handleButtonPress('down-right')}
         onMouseUp={handleButtonRelease}
         onMouseLeave={handleButtonRelease}
