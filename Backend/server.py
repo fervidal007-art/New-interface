@@ -1,222 +1,169 @@
 """
-Backend ideal para RoboMesha con FastAPI + Socket.IO (WebSockets reales)
-
-Controla la mesa omnidireccional vía I2C (simulado o real) y expone un API ASGI.
-Integra la lógica I2C avanzada con el sistema de WebSocket del frontend.
+Backend Optimizado para RoboMesha - Hiwonder Driver
+Basado en documentación oficial: TankDemo.py y PDF de desarrollo.
 """
-
-import asyncio
-import signal
-import socket
-import sys
-import time
-import uuid
-import numpy as np
 import socketio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import uvicorn
+import smbus
+import time
+import struct
 
-# ---------- Inicialización I2C ----------
-try:
-    import smbus2 as smbus
-    bus = smbus.SMBus(1)
-    try:
-        bus.write_quick(0x34)
-        I2C_DISPONIBLE = True
-        print("[I2C] Conexión I2C real detectada")
-    except Exception:
-        I2C_DISPONIBLE = False
-        print("[I2C] Bus I2C no responde, usando simulación")
-except ImportError:
-    I2C_DISPONIBLE = False
-    print("[I2C] smbus2 no disponible, usando simulación")
+# --- CONFIGURACIÓN I2C OFICIAL ---
+# Basado en [cite: 92, 93]
+I2C_BUS = 1
+MOTOR_ADDR = 0x34 
 
-# ---------- Configuración HiWonder Driver I2C ----------
-# Driver HiWonder para control de motores omnidireccionales
-# Documentación: https://docs.hiwonder.com/
+# Registros (TankDemo.py)
+ADC_BAT_ADDR = 0x00
+MOTOR_TYPE_ADDR = 0x14 
+MOTOR_ENCODER_POLARITY_ADDR = 0x15 
+MOTOR_FIXED_PWM_ADDR = 0x1F 
+MOTOR_FIXED_SPEED_ADDR = 0x33 # Control de velocidad (Closed Loop) [cite: 99]
 
-# Dirección I2C del controlador de motores
-DIRECCION_MOTORES = 0x34
-
-# Registros para velocidad fija (Fixed Speed Register)
-# Este registro acepta 4 valores PWM (uno por motor) en el rango -100 a 100
-REG_VELOCIDAD_FIJA = 0x33
-
-# Registros adicionales para inicialización
-MOTOR_TYPE_ADDR = 0x14
-MOTOR_ENCODER_POLARITY_ADDR = 0x15
-MOTOR_TYPE_JGB37_520_12V_110RPM = 3
+# Configuración de Motores JGB37-520 (Mecanum)
+# [cite: 111, 112]
+MOTOR_TYPE_JGB37_520_12V_110RPM = 3 
 MOTOR_ENCODER_POLARITY = 0
 
-BUFFER_LENGTH = 32  # Tamaño del buffer circular (similar a Wire de Arduino)
+# Velocidad estándar para los movimientos (Ajustable de 0 a 100)
+VELOCIDAD = 50 
 
-# Parámetros de cinemática omnidireccional
-R = 0.048
-l1 = 0.097
-l2 = 0.109
-W = (1 / R) * np.array([
-    [1, 1, -(l1 + l2)],
-    [1, 1, (l1 + l2)],
-    [1, -1, (l1 + l2)],
-    [1, -1, -(l1 + l2)],
-])
-
-V_MAX = 250
-PWM_MAX = 100
-
-# Velocidad estándar para comandos discretos (ajustable de 0 a 100)
-VELOCIDAD = 50
-
-
-class I2CBusWrapper:
-    """
-    Wrapper similar a Wire de Arduino para monitorear y debuggear I2C.
-    Mantiene un buffer circular de los últimos comandos enviados.
-    """
-
-    def __init__(self, real_bus, buffer_size=BUFFER_LENGTH):
-        self.bus = real_bus
-        self.buffer_size = buffer_size
-        self.buffer = []  # Buffer circular de comandos
-        self.write_count = 0
-        self.error_count = 0
-        self.last_write_time = 0
-
-    def write_i2c_block_data(self, addr, reg, data):
-        """Escribe datos al I2C y actualiza el buffer de monitoreo"""
+class HiwonderDriver:
+    def __init__(self):
+        self.bus = None
+        self.simulation_mode = False
         try:
-            self.bus.write_i2c_block_data(addr, reg, data)
-            self.write_count += 1
-            self.last_write_time = time.time()
+            self.bus = smbus.SMBus(I2C_BUS)
+            print(f"[INIT] Conexión I2C exitosa en bus {I2C_BUS}")
+            self.init_motors()
+        except Exception as e:
+            print(f"[ERROR] No se detectó I2C ({e}). Usando MODO SIMULACIÓN.")
+            self.simulation_mode = True
 
-            # Agregar al buffer circular
-            buffer_entry = {
-                'timestamp': time.time(),
-                'addr': addr,
-                'reg': reg,
-                'data': data.copy() if isinstance(data, list) else data,
-                'success': True
-            }
-
-            self.buffer.append(buffer_entry)
-            # Mantener solo los últimos BUFFER_LENGTH comandos
-            if len(self.buffer) > self.buffer_size:
-                self.buffer.pop(0)
-
-            return True
-        except Exception as exc:
-            self.error_count += 1
-            buffer_entry = {
-                'timestamp': time.time(),
-                'addr': addr,
-                'reg': reg,
-                'data': data.copy() if isinstance(data, list) else data,
-                'success': False,
-                'error': str(exc)
-            }
-            self.buffer.append(buffer_entry)
-            if len(self.buffer) > self.buffer_size:
-                self.buffer.pop(0)
-            raise exc
-
-    def write_quick(self, addr):
-        """Quick write (similar a Wire.beginTransmission)"""
-        return self.bus.write_quick(addr)
-
-    def write_byte_data(self, addr, reg, data):
-        """Escribe un byte al I2C"""
+    def init_motors(self):
+        """Inicializa el driver como pide la documentación oficial [cite: 123, 125]"""
+        if self.simulation_mode: return
         try:
-            self.bus.write_byte_data(addr, reg, data)
-            return True
-        except Exception as exc:
-            self.error_count += 1
-            raise exc
+            # 1. Configurar tipo de motor
+            self.bus.write_byte_data(MOTOR_ADDR, MOTOR_TYPE_ADDR, MOTOR_TYPE_JGB37_520_12V_110RPM)
+            time.sleep(0.1) # Pequeña pausa necesaria
+            # 2. Configurar polaridad
+            self.bus.write_byte_data(MOTOR_ADDR, MOTOR_ENCODER_POLARITY_ADDR, MOTOR_ENCODER_POLARITY)
+            print("[INIT] Motores inicializados correctamente (Tipo 3, Polaridad 0).")
+        except Exception as e:
+            print(f"[ERROR] Fallo al inicializar motores: {e}")
 
-    def read_i2c_block_data(self, addr, reg, length):
-        """Lee datos del I2C"""
+    def enviar_velocidad(self, velocidades):
+        """
+        Envía el array de 4 velocidades al registro 0x33 (Fixed Speed)
+        velocidades: lista de 4 enteros [m1, m2, m3, m4]
+        
+        """
+        if self.simulation_mode:
+            print(f"[SIMULACIÓN] Motores moviéndose: {velocidades}")
+            return
+
         try:
-            return self.bus.read_i2c_block_data(addr, reg, length)
-        except Exception as exc:
-            self.error_count += 1
-            raise exc
+            # Escribir bloque I2C al registro 0x33
+            self.bus.write_i2c_block_data(MOTOR_ADDR, MOTOR_FIXED_SPEED_ADDR, velocidades)
+            # NO ponemos sleep aquí para no bloquear el servidor, el driver se encarga.
+        except Exception as e:
+            print(f"[I2C ERROR] No se pudo enviar comando: {e}")
 
-    def get_buffer_status(self):
-        """Obtiene el estado actual del buffer (similar a Wire.available)"""
-        return {
-            'buffer_size': len(self.buffer),
-            'buffer_capacity': self.buffer_size,
-            'write_count': self.write_count,
-            'error_count': self.error_count,
-            'last_write_time': self.last_write_time,
-            'time_since_last_write': time.time() - self.last_write_time if self.last_write_time > 0 else 0
-        }
+# Instancia del driver
+driver = HiwonderDriver()
 
-    def get_buffer_history(self, n=None):
-        """Obtiene el historial del buffer (últimos n comandos)"""
-        if n is None:
-            return self.buffer.copy()
-        return self.buffer[-n:] if n <= len(self.buffer) else self.buffer.copy()
+# --- LÓGICA DE MOVIMIENTOS MECANUM ---
+# Asumiendo mapeo: M1=FrontIzq, M2=TrasIzq, M3=FrontDer, M4=TrasDer (Verificar cableado)
+# Si un motor gira al revés, invierte el signo aquí.
 
-    def clear_buffer(self):
-        """Limpia el buffer (similar a Wire.flush)"""
-        self.buffer.clear()
-        print("[I2C] Buffer limpiado")
+def detener():
+    print(">> DETENER")
+    driver.enviar_velocidad([0, 0, 0, 0])
 
-    def print_buffer_status(self):
-        """Imprime el estado del buffer para debugging"""
-        status = self.get_buffer_status()
-        print(f"[I2C BUFFER] Tamaño: {status['buffer_size']}/{status['buffer_capacity']}")
-        print(f"[I2C BUFFER] Escrituras: {status['write_count']}, Errores: {status['error_count']}")
-        if status['last_write_time'] > 0:
-            print(f"[I2C BUFFER] Última escritura hace: {status['time_since_last_write']:.3f}s")
+def adelante():
+    # Todos positivos (o ajustar según cableado)
+    v = [VELOCIDAD, VELOCIDAD, VELOCIDAD, VELOCIDAD] 
+    print(f">> ADELANTE {v}")
+    driver.enviar_velocidad(v)
 
+def atras():
+    # Todos negativos
+    v = [-VELOCIDAD, -VELOCIDAD, -VELOCIDAD, -VELOCIDAD]
+    print(f">> ATRAS {v}")
+    driver.enviar_velocidad(v)
 
-class FakeBus:
-    def write_i2c_block_data(self, addr, reg, data):
-        motor_names = [
-            'Motor Delantero Izquierdo',
-            'Motor Delantero Derecho',
-            'Motor Trasero Derecho',
-            'Motor Trasero Izquierdo',
-        ]
-        print("[SIMULACIÓN I2C] Comando enviado:")
-        print(f"  Dirección: {hex(addr)}, Registro: {hex(reg)}")
-        for name, pwm in zip(motor_names, data):
-            print(f"  {name}: PWM = {pwm:6.2f}")
+def izquierda():
+    # Strafe Izquierda: M1(-), M2(+), M3(+), M4(-)
+    v = [-VELOCIDAD, VELOCIDAD, VELOCIDAD, -VELOCIDAD]
+    print(f">> IZQUIERDA {v}")
+    driver.enviar_velocidad(v)
 
-    def write_byte_data(self, addr, reg, data):
-        print(f"[SIMULACIÓN I2C] Escribiendo byte: {hex(addr)}, reg={hex(reg)}, data={data}")
+def derecha():
+    # Strafe Derecha: M1(+), M2(-), M3(-), M4(+)
+    v = [VELOCIDAD, -VELOCIDAD, -VELOCIDAD, VELOCIDAD]
+    print(f">> DERECHA {v}")
+    driver.enviar_velocidad(v)
 
-    def write_quick(self, addr):
-        pass
+def giro_izquierda():
+    # Girar sobre su eje a la izquierda: Izquierdos(-), Derechos(+)
+    v = [-VELOCIDAD, -VELOCIDAD, VELOCIDAD, VELOCIDAD]
+    print(f">> GIRO IZQ {v}")
+    driver.enviar_velocidad(v)
 
+def giro_derecha():
+    # Girar sobre su eje a la derecha: Izquierdos(+), Derechos(-)
+    v = [VELOCIDAD, VELOCIDAD, -VELOCIDAD, -VELOCIDAD]
+    print(f">> GIRO DER {v}")
+    driver.enviar_velocidad(v)
 
-# Inicializar bus I2C
-if not I2C_DISPONIBLE:
-    bus = FakeBus()
-    i2c_wrapper = None
-else:
-    real_bus = smbus.SMBus(0)
-    i2c_wrapper = I2CBusWrapper(real_bus, buffer_size=BUFFER_LENGTH)
-    bus = i2c_wrapper
-    print(f"[I2C] Usando bus I2C real en dirección {hex(DIRECCION_MOTORES)}")
-    print(f"[I2C] Buffer de monitoreo inicializado (tamaño: {BUFFER_LENGTH})")
-    
-    # Inicializar motores según documentación HiWonder
-    try:
-        bus.write_byte_data(DIRECCION_MOTORES, MOTOR_TYPE_ADDR, MOTOR_TYPE_JGB37_520_12V_110RPM)
-        time.sleep(0.1)
-        bus.write_byte_data(DIRECCION_MOTORES, MOTOR_ENCODER_POLARITY_ADDR, MOTOR_ENCODER_POLARITY)
-        print("[I2C] Motores inicializados correctamente (Tipo 3, Polaridad 0)")
-    except Exception as e:
-        print(f"[ERROR] Fallo al inicializar motores: {e}")
+# --- DIAGONALES (Solo mueven 2 ruedas) ---
+def diagonal_izq_arriba():
+    # M1(0), M2(+), M3(+), M4(0)
+    v = [0, VELOCIDAD, VELOCIDAD, 0]
+    print(f">> DIAG IZQ ARRIBA {v}")
+    driver.enviar_velocidad(v)
 
-# ---------- Aplicación ASGI ----------
-HOSTNAME = socket.gethostname()
-CAR_DEVICE_ID = f"carrito_{HOSTNAME}"
+def diagonal_der_arriba():
+    # M1(+), M2(0), M3(0), M4(+)
+    v = [VELOCIDAD, 0, 0, VELOCIDAD]
+    print(f">> DIAG DER ARRIBA {v}")
+    driver.enviar_velocidad(v)
 
-fastapi_app = FastAPI(title="RoboMesha Backend", version="1.0.0")
-fastapi_app.add_middleware(
+def diagonal_izq_abajo():
+    # M1(-), M2(0), M3(0), M4(-)
+    v = [-VELOCIDAD, 0, 0, -VELOCIDAD]
+    print(f">> DIAG IZQ ABAJO {v}")
+    driver.enviar_velocidad(v)
+
+def diagonal_der_abajo():
+    # M1(0), M2(-), M3(-), M4(0)
+    v = [0, -VELOCIDAD, -VELOCIDAD, 0]
+    print(f">> DIAG DER ABAJO {v}")
+    driver.enviar_velocidad(v)
+
+# Diccionario de comandos para mapear texto a función
+COMANDOS = {
+    "stop": detener,
+    "adelante": adelante,
+    "atras": atras,
+    "izquierda": izquierda,
+    "derecha": derecha,
+    "giro_izq": giro_izquierda,
+    "giro_der": giro_derecha,
+    "diag_izq_arr": diagonal_izq_arriba,
+    "diag_der_arr": diagonal_der_arriba,
+    "diag_izq_abj": diagonal_izq_abajo,
+    "diag_der_abj": diagonal_der_abajo
+}
+
+# --- SERVIDOR FASTAPI + SOCKET.IO ---
+app_fastapi = FastAPI()
+
+# Configurar CORS para permitir conexión desde React/Vite
+app_fastapi.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
@@ -224,409 +171,268 @@ fastapi_app.add_middleware(
     allow_headers=["*"],
 )
 
-sio = socketio.AsyncServer(
-    async_mode='asgi',
-    cors_allowed_origins='*',
-    ping_interval=10,
-    ping_timeout=30,
-)
+sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')
+app = socketio.ASGIApp(sio, other_asgi_app=app_fastapi)
 
-app = socketio.ASGIApp(sio, other_asgi_app=fastapi_app)
+# --- GESTIÓN DE DISPOSITIVOS Y CLIENTES ---
+# Almacenar información de clientes conectados
+connected_clients = {}  # {sid: {role, name, device_name}}
+registered_devices = {}  # {device_name: {sid, role, last_seen}}
 
-# ---------- Estado Global ----------
-state_lock = asyncio.Lock()
-operators = {}
+# Nombre del dispositivo principal (el robot físico)
+ROBOT_DEVICE_NAME = "RoboMesha"
 
-# Sistema de comando más reciente
-latest_command = None  # Último comando recibido (siempre se actualiza)
-latest_command_lock = asyncio.Lock()
-latest_command_time = 0
-last_sent_command = None  # Último comando ENVIADO al I2C
-last_send_time = 0
-
-# Configuración
-MIN_SEND_INTERVAL = 0.05  # 50ms = 20 mensajes/segundo máximo al I2C
-COMMAND_TIMEOUT = 1.0      # 1 segundo sin comandos = detener (ajustado a 1 segundo)
-STOP_THRESHOLD = 0.5       # Umbral para detectar STOP
-
-motor_task = None
-safety_task = None
-
-
-def calcular_pwm(vx, vy, omega):
-    """Calcula los valores PWM usando cinemática omnidireccional"""
-    velocidades = np.dot(W, np.array([vx, vy, omega]))
-    factor_escala = np.max(np.abs(velocidades)) / V_MAX if np.max(np.abs(velocidades)) > V_MAX else 1
-    if factor_escala > 1:
-        velocidades /= factor_escala
-    velocidades[1] *= -1
-    velocidades[2] *= -1
-    pwm = np.clip((velocidades / V_MAX) * PWM_MAX, -PWM_MAX, PWM_MAX)
-    return [int(p) for p in pwm]
-
-
-def enviar_pwm(vx, vy, omega):
-    """
-    Envía valores PWM al driver HiWonder mediante I2C.
-
-    El driver HiWonder espera 4 valores PWM (uno por motor) en el registro 0x33:
-    - Motor 0: Delantero Izquierdo
-    - Motor 1: Delantero Derecho
-    - Motor 2: Trasero Derecho
-    - Motor 3: Trasero Izquierdo
-
-    Valores: -100 (máxima velocidad reversa) a 100 (máxima velocidad adelante)
-    """
-    pwm = calcular_pwm(vx, vy, omega)
-    try:
-        bus.write_i2c_block_data(DIRECCION_MOTORES, REG_VELOCIDAD_FIJA, pwm)
-        # Si tenemos el wrapper, podemos monitorear el buffer
-        if i2c_wrapper is not None and i2c_wrapper.write_count % 50 == 0:
-            # Imprimir estado del buffer cada 50 escrituras
-            i2c_wrapper.print_buffer_status()
-    except Exception as exc:
-        print(f"[ERROR] Error al enviar PWM al driver HiWonder: {exc}")
-        if i2c_wrapper is not None:
-            print(f"[I2C BUFFER] Errores totales: {i2c_wrapper.error_count}")
-
-
-def detener_motores():
-    """
-    Detiene todos los motores enviando PWM = 0 a todos los motores.
-    Compatible con driver HiWonder.
-    """
-    try:
-        bus.write_i2c_block_data(DIRECCION_MOTORES, REG_VELOCIDAD_FIJA, [0, 0, 0, 0])
-        print("[MOTORES] Todos los motores detenidos (HiWonder)")
-    except Exception as exc:
-        print(f"[ERROR] Error al detener motores en HiWonder: {exc}")
-
-
-def convertir_comando_frontend(x, y, rotation):
-    """Convierte comandos del frontend (normalizados -1 a 1) a velocidades físicas"""
-    vx = x * V_MAX
-    vy = y * V_MAX
-    omega = rotation * 2.0
-    return vx, vy, omega
-
-
-# ---------- Comandos discretos (compatibilidad con botones) ----------
-def convertir_accion_a_velocidades(accion):
-    """
-    Convierte una acción discreta (adelante, atras, etc.) a velocidades vx, vy, omega.
-    Retorna (vx, vy, omega) o None si la acción no es válida.
-    """
-    # Mapeo de acciones a velocidades normalizadas
-    acciones = {
-        "stop": (0, 0, 0),
-        "adelante": (0, 1, 0),  # vx=0, vy=1 (adelante), omega=0
-        "atras": (0, -1, 0),    # vx=0, vy=-1 (atrás), omega=0
-        "izquierda": (-1, 0, 0),  # vx=-1 (izquierda), vy=0, omega=0
-        "derecha": (1, 0, 0),   # vx=1 (derecha), vy=0, omega=0
-        "giro_izq": (0, 0, -1),  # vx=0, vy=0, omega=-1 (rotación izquierda)
-        "giro_der": (0, 0, 1),   # vx=0, vy=0, omega=1 (rotación derecha)
-        "diag_izq_arr": (-0.707, 0.707, 0),  # Diagonal superior izquierda
-        "diag_der_arr": (0.707, 0.707, 0),   # Diagonal superior derecha
-        "diag_izq_abj": (-0.707, -0.707, 0),  # Diagonal inferior izquierda
-        "diag_der_abj": (0.707, -0.707, 0),   # Diagonal inferior derecha
-    }
-    
-    if accion not in acciones:
-        return None
-    
-    x_norm, y_norm, rot_norm = acciones[accion]
-    return convertir_comando_frontend(x_norm, y_norm, rot_norm)
-
-
-async def motor_controller():
-    """
-    Tarea dedicada que procesa comandos al I2C respetando rate limiting.
-    SIEMPRE procesa el comando MÁS RECIENTE, descartando todo lo demás.
-    """
-    global latest_command, last_sent_command, last_send_time
-    print("[MOTOR] Controlador de motores iniciado")
-    while True:
-        await asyncio.sleep(MIN_SEND_INTERVAL)  # Esperar intervalo mínimo
-        current_time = time.time()
-
-        # Obtener el comando más reciente (thread-safe)
-        async with latest_command_lock:
-            comando_actual = latest_command
-
-        # Si no hay comando, continuar
-        if comando_actual is None:
-            continue
-
-        vx, vy, omega = comando_actual
-
-        # Detectar si es un comando de STOP
-        es_stop = (abs(vx) <= STOP_THRESHOLD and
-                   abs(vy) <= STOP_THRESHOLD and
-                   abs(omega) <= 0.1)
-
-        # Crear tupla para comparación
-        current_command = (round(vx, 1), round(vy, 1), round(omega, 2))
-
-        # Verificar si el comando cambió
-        comando_cambio = (last_sent_command != current_command)
-
-        if not comando_cambio:
-            # Comando idéntico al anterior, no hacer nada
-            continue
-
-        # El comando cambió, enviarlo al I2C
-        if es_stop:
-            detener_motores()
-            print("[MOTOR] STOP detectado")
-            last_sent_command = (0, 0, 0)
-        else:
-            enviar_pwm(vx, vy, omega)
-            print(f"[MOTOR] vx={vx:.1f}, vy={vy:.1f}, omega={omega:.3f}")
-            last_sent_command = current_command
-
-        last_send_time = current_time
-
-
-async def safety_monitor():
-    """
-    Monitorea timeout de comandos y detiene motores si no hay actividad.
-    """
-    global latest_command_time, last_sent_command
-    print(f"[SEGURIDAD] Monitor iniciado (timeout: {COMMAND_TIMEOUT}s)")
-    while True:
-        await asyncio.sleep(0.1)  # Verificar cada 100ms
-        current_time = time.time()
-
-        time_since_last = current_time - latest_command_time
-
-        # Si pasó el timeout y los motores no están detenidos
-        if time_since_last > COMMAND_TIMEOUT and last_sent_command != (0, 0, 0):
-            print(f"[SEGURIDAD] ⚠️ TIMEOUT ({time_since_last:.2f}s), deteniendo motores")
-            detener_motores()
-            last_sent_command = (0, 0, 0)
-            # Limpiar el comando actual
-            async with latest_command_lock:
-                latest_command = (0, 0, 0)
-
-
-async def emit_device_list(target_sid=None):
-    """Emite la lista de dispositivos disponibles"""
-    data = {'devices': [CAR_DEVICE_ID]}
-    if target_sid:
-        await sio.emit('device_list', data, to=target_sid)
-    else:
-        await sio.emit('device_list', data)
-    print(f"[DEVICES] Lista actualizada: {data['devices']}")
-
-
-# ---------- Endpoints FastAPI ----------
-@fastapi_app.get('/health')
-async def health_check():
-    response = {
-        'status': 'ok',
-        'mode': 'REAL' if I2C_DISPONIBLE else 'SIMULACION',
-        'device': CAR_DEVICE_ID,
-        'latest_command': latest_command,
-        'last_sent': last_sent_command,
-    }
-
-    # Agregar información del buffer I2C si está disponible
-    if i2c_wrapper is not None:
-        response['i2c_buffer'] = i2c_wrapper.get_buffer_status()
-
-    return response
-
-
-@fastapi_app.get('/i2c/buffer')
-async def get_i2c_buffer(n: int = 10):
-    """
-    Obtiene el historial del buffer I2C (últimos n comandos).
-    Similar a revisar Wire.available() y el buffer en Arduino.
-    """
-    if not I2C_DISPONIBLE or i2c_wrapper is None:
-        return {
-            'error': 'I2C no disponible o en modo simulación',
-            'mode': 'SIMULACION'
-        }
-
-    status = i2c_wrapper.get_buffer_status()
-    history = i2c_wrapper.get_buffer_history(n)
-
-    return {
-        'status': status,
-        'history': history,
-        'buffer_length': BUFFER_LENGTH
-    }
-
-
-@fastapi_app.post('/i2c/buffer/clear')
-async def clear_i2c_buffer():
-    """Limpia el buffer I2C (similar a Wire.flush())"""
-    if not I2C_DISPONIBLE or i2c_wrapper is None:
-        return {'error': 'I2C no disponible o en modo simulación'}
-
-    i2c_wrapper.clear_buffer()
-    return {'status': 'Buffer limpiado exitosamente'}
-
-
-# ---------- Eventos Socket.IO ----------
 @sio.event
-async def connect(sid, environ, auth):
-    print(f"[CONEXIÓN] Operador conectado: {sid}")
-    await emit_device_list(target_sid=sid)
-
+async def connect(sid, environ):
+    """Maneja la conexión de nuevos clientes"""
+    print(f"[CONNECT] Cliente conectado: {sid}")
+    connected_clients[sid] = {
+        'role': None,
+        'name': None,
+        'device_name': None,
+        'connected_at': time.time()
+    }
 
 @sio.event
 async def disconnect(sid):
-    async with state_lock:
-        if sid in operators:
-            operator = operators.pop(sid)
-            print(f"[CONEXIÓN] Operador desconectado: {operator['name']} ({sid})")
-        else:
-            print(f"[CONEXIÓN] Cliente desconectado: {sid}")
-    # Seguridad: detener motores si se desconecta el operador
-    detener_motores()
-
+    """Maneja la desconexión de clientes"""
+    print(f"[DISCONNECT] Cliente desconectado: {sid}")
+    
+    # Si era un operador, detener el robot por seguridad
+    client_info = connected_clients.get(sid, {})
+    if client_info.get('role') == 'operator':
+        print("[SEGURIDAD] Operador desconectado, deteniendo robot")
+        detener()
+    
+    # Limpiar registros
+    if sid in connected_clients:
+        device_name = connected_clients[sid].get('device_name')
+        if device_name and device_name in registered_devices:
+            del registered_devices[device_name]
+        del connected_clients[sid]
+    
+    # Notificar a otros clientes sobre la actualización de dispositivos
+    await broadcast_device_list()
 
 @sio.event
 async def register(sid, data):
-    """Registra un operador en el sistema"""
-    name = data.get('base_name', 'unknown')
-    role = data.get('role', 'operator')
-    async with state_lock:
-        operators[sid] = {
-            'name': name,
+    """
+    Registra un cliente como operador o dispositivo.
+    Data esperado: {"role": "operator", "base_name": "ControlPanel"}
+    """
+    role = data.get("role", "unknown")
+    base_name = data.get("base_name", "Unknown")
+    
+    # Generar nombre único si es necesario
+    if role == "operator":
+        device_name = f"{base_name}_{sid[:8]}"
+    else:
+        device_name = base_name
+    
+    # Actualizar información del cliente
+    if sid in connected_clients:
+        connected_clients[sid].update({
             'role': role,
-            'connected_at': time.time(),
-            'device_id': f"operator_{name}_{uuid.uuid4().hex[:6]}",
-        }
-    print(f"[REGISTRO] {name} ({role}) registrado - SID: {sid}")
-    await emit_device_list(target_sid=sid)
-
+            'name': base_name,
+            'device_name': device_name
+        })
+    
+    # Registrar dispositivo
+    registered_devices[device_name] = {
+        'sid': sid,
+        'role': role,
+        'name': base_name,
+        'last_seen': time.time()
+    }
+    
+    print(f"[REGISTER] {role} registrado: {device_name} (sid: {sid})")
+    
+    # Confirmar registro
+    await sio.emit('registered', {
+        'name': device_name,
+        'role': role,
+        'base_name': base_name
+    }, room=sid)
+    
+    # Enviar lista actualizada de dispositivos
+    await broadcast_device_list()
 
 @sio.event
-async def list_devices(sid):
-    """Solicita la lista de dispositivos disponibles"""
-    await emit_device_list(target_sid=sid)
-
-
-@sio.event
-async def send_command(sid, data):
+async def list_devices(sid, data=None):
     """
-    Recibe comandos del frontend y SOLO actualiza el comando más reciente.
-    NO envía nada al I2C directamente - eso lo hace motor_controller()
-
-    Espera: {target: "carrito_...", payload: {type: "movement", data: {x, y, rotation}}}
+    Responde con la lista de dispositivos registrados.
     """
-    global latest_command, latest_command_time
-    target = data.get('target')
-    payload = data.get('payload', {})
-
-    if target != CAR_DEVICE_ID:
-        return
-
-    if payload.get('type') != 'movement':
-        return
-
-    movement = payload.get('data', {})
-    vx, vy, omega = convertir_comando_frontend(
-        movement.get('x', 0),
-        movement.get('y', 0),
-        movement.get('rotation', 0),
-    )
-
-    # SOLO actualizar el comando más reciente (thread-safe)
-    async with latest_command_lock:
-        latest_command = (vx, vy, omega)
-        latest_command_time = time.time()
-
-    # No hay rate limiting aquí - solo guardamos el comando
-    # El motor_controller() se encarga de procesarlo cuando sea el momento
-
+    device_list = list(registered_devices.keys())
+    # Siempre incluir el robot principal en la lista
+    if ROBOT_DEVICE_NAME not in device_list:
+        device_list.append(ROBOT_DEVICE_NAME)
+    print(f"[LIST_DEVICES] Enviando lista a {sid}: {device_list}")
+    
+    await sio.emit('device_list', {
+        'devices': device_list
+    }, room=sid)
 
 @sio.event
 async def command(sid, data):
     """
-    Recibe comandos discretos del frontend (compatibilidad con botones).
-    Espera: {"action": "adelante"} o {"action": "stop"}
+    Recibe comandos simples desde el frontend.
+    Data esperado: {"action": "adelante"} o {"action": "stop"}
     """
-    global latest_command, latest_command_time
     accion = data.get("action")
-
-    if accion is None:
+    
+    # Verificar que el cliente está registrado como operador
+    client_info = connected_clients.get(sid, {})
+    if client_info.get('role') != 'operator':
+        print(f"[WARNING] Cliente {sid} intentó enviar comando sin ser operador")
+        await sio.emit('error', {
+            'message': 'No autorizado: solo operadores pueden enviar comandos'
+        }, room=sid)
         return
-
-    # Convertir acción a velocidades
-    velocidades = convertir_accion_a_velocidades(accion)
-    if velocidades is None:
-        print(f"[COMANDO] Acción desconocida: {accion}")
-        return
-
-    vx, vy, omega = velocidades
-
-    # Actualizar el comando más reciente (thread-safe)
-    async with latest_command_lock:
-        latest_command = (vx, vy, omega)
-        latest_command_time = time.time()
-
-    print(f"[COMANDO] Acción '{accion}' -> vx={vx:.1f}, vy={vy:.1f}, omega={omega:.3f}")
-
+    
+    print(f"[COMMAND] Comando recibido de {sid}: {accion}")
+    
+    if accion in COMANDOS:
+        # Ejecutar la función correspondiente (usa I2C)
+        COMANDOS[accion]()
+        
+        # Enviar mensaje de conversación para logging
+        await send_conversation_message(
+            device=ROBOT_DEVICE_NAME,
+            direction='incoming',
+            payload={'action': accion, 'type': 'command'},
+            origin=client_info.get('device_name', 'unknown')
+        )
+        
+        # Confirmar recepción
+        await sio.emit('command_received', {
+            'action': accion,
+            'status': 'executed'
+        }, room=sid)
+    else:
+        print(f"[ERROR] Comando desconocido: {accion}")
+        await sio.emit('error', {
+            'message': f'Comando desconocido: {accion}'
+        }, room=sid)
 
 @sio.event
-async def emergency_stop(sid, data):
-    """Paro de emergencia - máxima prioridad"""
-    global latest_command, latest_command_time, last_sent_command
-    print(f"[EMERGENCIA] 🚨 PARO DE EMERGENCIA activado por {sid}")
-    # Actualizar comando más reciente a STOP (0, 0, 0)
-    async with latest_command_lock:
-        latest_command = (0, 0, 0)
-        latest_command_time = time.time()
-    # Detener inmediatamente (sin esperar al motor_controller)
-    detener_motores()
-    last_sent_command = (0, 0, 0)
-    await sio.emit('emergency_stop_confirmed', {
-        'timestamp': time.time(),
-        'triggered_by': sid
+async def send_command(sid, data):
+    """
+    Envía un comando a un dispositivo específico.
+    Data esperado: {"target": "RoboMesha", "payload": {...}}
+    """
+    target = data.get("target")
+    payload = data.get("payload", {})
+    
+    # Verificar que el cliente está registrado como operador
+    client_info = connected_clients.get(sid, {})
+    if client_info.get('role') != 'operator':
+        print(f"[WARNING] Cliente {sid} intentó enviar comando sin ser operador")
+        await sio.emit('error', {
+            'message': 'No autorizado: solo operadores pueden enviar comandos'
+        }, room=sid)
+        return
+    
+    print(f"[SEND_COMMAND] Comando a {target} desde {sid}: {payload}")
+    
+    # Si el target es el robot principal, procesar el comando
+    if target == ROBOT_DEVICE_NAME:
+        # Procesar comando de movimiento
+        if payload.get('type') == 'movement':
+            movement_data = payload.get('data', {})
+            x = movement_data.get('x', 0)
+            y = movement_data.get('y', 0)
+            rotation = movement_data.get('rotation', 0)
+            
+            # Convertir coordenadas a comandos de movimiento mecanum
+            await process_movement_command(x, y, rotation)
+        
+        # Enviar mensaje de conversación
+        await send_conversation_message(
+            device=target,
+            direction='incoming',
+            payload=payload,
+            origin=client_info.get('device_name', 'unknown')
+        )
+    
+    # Si el target existe en dispositivos registrados, reenviar
+    elif target in registered_devices:
+        target_sid = registered_devices[target]['sid']
+        await sio.emit('command', payload, room=target_sid)
+    
+    # Confirmar envío
+    await sio.emit('command_sent', {
+        'target': target,
+        'payload': payload
+    }, room=sid)
+
+async def process_movement_command(x, y, rotation):
+    """
+    Procesa comandos de movimiento con coordenadas x, y, rotation.
+    Convierte a velocidades de motores mecanum.
+    """
+    # Normalizar valores
+    x = max(-1, min(1, x))
+    y = max(-1, min(1, y))
+    rotation = max(-1, min(1, rotation))
+    
+    # Calcular velocidades para cada motor (mecanum)
+    # M1=FrontIzq, M2=TrasIzq, M3=FrontDer, M4=TrasDer
+    # Fórmula mecanum: v = x + y + rotation
+    m1 = (x + y + rotation) * VELOCIDAD
+    m2 = (-x + y + rotation) * VELOCIDAD
+    m3 = (-x + y - rotation) * VELOCIDAD
+    m4 = (x + y - rotation) * VELOCIDAD
+    
+    # Limitar valores a rango [-100, 100]
+    velocidades = [
+        int(max(-100, min(100, m1))),
+        int(max(-100, min(100, m2))),
+        int(max(-100, min(100, m3))),
+        int(max(-100, min(100, m4)))
+    ]
+    
+    print(f"[MOVEMENT] x={x:.2f}, y={y:.2f}, rot={rotation:.2f} -> {velocidades}")
+    driver.enviar_velocidad(velocidades)
+
+async def send_conversation_message(device, direction, payload, origin):
+    """
+    Envía un mensaje de conversación a todos los clientes conectados.
+    """
+    message = {
+        'device': device,
+        'direction': direction,
+        'payload': payload,
+        'origin': origin,
+        'ts': time.time()
+    }
+    
+    # Broadcast a todos los clientes
+    await sio.emit('conversation_message', message)
+
+async def broadcast_device_list():
+    """
+    Envía la lista actualizada de dispositivos a todos los clientes.
+    """
+    device_list = list(registered_devices.keys())
+    # Siempre incluir el robot principal en la lista
+    if ROBOT_DEVICE_NAME not in device_list:
+        device_list.append(ROBOT_DEVICE_NAME)
+    await sio.emit('device_list', {
+        'devices': device_list
     })
 
-
-def cerrar_todo(signal_name, frame):
-    """Maneja señales de cierre (SIGINT, SIGTERM)"""
-    print(f"\n[CERRANDO] Señal recibida ({signal_name}), deteniendo motores...")
-    detener_motores()
-    sys.exit(0)
-
-
-signal.signal(signal.SIGINT, cerrar_todo)
-signal.signal(signal.SIGTERM, cerrar_todo)
-
-
-@fastapi_app.on_event("startup")
-async def startup_event():
-    """Iniciar tareas de fondo al arrancar la aplicación"""
-    global motor_task, safety_task, latest_command_time
-    latest_command_time = time.time()
-
-    # Iniciar tarea de control de motores
-    motor_task = asyncio.create_task(motor_controller())
-    print("[INICIO] Tarea de control de motores iniciada")
-
-    # Iniciar tarea de monitoreo de seguridad
-    safety_task = asyncio.create_task(safety_monitor())
-    print("[INICIO] Tarea de monitoreo de seguridad iniciada")
-
+# Registrar el robot principal como dispositivo disponible desde el inicio
+# (no tiene un sid porque es el servidor mismo)
+registered_devices[ROBOT_DEVICE_NAME] = {
+    'sid': None,  # El servidor mismo
+    'role': 'robot',
+    'name': ROBOT_DEVICE_NAME,
+    'last_seen': time.time()
+}
 
 if __name__ == '__main__':
-    import uvicorn
-
-    print("=" * 60)
-    print("🚀 Backend RoboMesha (ASGI) iniciando...")
-    print("=" * 60)
-    print(f"[I2C] Modo: {'REAL' if I2C_DISPONIBLE else 'SIMULACIÓN'}")
-    print(f"[DEVICE] ID: {CAR_DEVICE_ID}")
-    print(f"[CONFIG] Rate limit: {MIN_SEND_INTERVAL}s ({1/MIN_SEND_INTERVAL:.0f} msg/s)")
-    print(f"[CONFIG] Timeout seguridad: {COMMAND_TIMEOUT}s")
-    print(f"[SERVIDOR] Escuchando en http://0.0.0.0:5000")
-    print("=" * 60)
-
-    uvicorn.run(app, host='0.0.0.0', port=5000, log_level="info")
+    print("🚀 Iniciando servidor RoboMesha...")
+    print(f"🤖 Robot registrado: {ROBOT_DEVICE_NAME}")
+    print("📡 Escuchando en puerto 5000")
+    print("🔌 Esperando conexiones de clientes...")
+    uvicorn.run(app, host='0.0.0.0', port=5000)
