@@ -68,6 +68,7 @@ function App() {
   }, []);
 
   useEffect(() => {
+    // Conectar al socket (es un singleton, así que es seguro llamarlo múltiples veces)
     socketService.connect();
 
     const handleConnect = () => {
@@ -85,6 +86,7 @@ function App() {
       console.error('Socket error:', err);
     };
 
+    // Registrar listeners
     socketService.on('connect', handleConnect);
     socketService.on('disconnect', handleDisconnect);
     socketService.on('device_list', handleDeviceList);
@@ -92,12 +94,15 @@ function App() {
     socketService.on('error', handleError);
 
     return () => {
+      // Limpiar listeners pero NO desconectar el socket
+      // El socket es un singleton y puede ser usado por otros componentes
+      // Solo desconectar cuando realmente se desmonte la app completa
       socketService.off('connect', handleConnect);
       socketService.off('disconnect', handleDisconnect);
       socketService.off('device_list', handleDeviceList);
       socketService.off('conversation_message', handleConversationMessage);
       socketService.off('error', handleError);
-      socketService.disconnect();
+      // NO llamar a disconnect() aquí para evitar desconexiones en React StrictMode
     };
   }, [handleDeviceList, handleConversationMessage]);
 
