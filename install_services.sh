@@ -62,8 +62,21 @@ if [ -d "$PROJECT_DIR/.git" ]; then
     echo "🔄 Detectado repositorio Git, actualizando código..."
     # Configurar estrategia de pull por defecto si no está configurada (merge por defecto)
     su - "$CURRENT_USER" -c "cd '$PROJECT_DIR' && git config pull.rebase false 2>/dev/null || true"
-    # Intentar hacer pull con merge (más seguro que rebase)
-    su - "$CURRENT_USER" -c "cd '$PROJECT_DIR' && git pull --no-rebase" || echo "   ⚠️  No se pudo actualizar (puede que no haya cambios o haya conflictos)"
+    # Verificar si hay cambios sin commitear
+    if su - "$CURRENT_USER" -c "cd '$PROJECT_DIR' && git diff --quiet && git diff --cached --quiet" 2>/dev/null; then
+        # No hay cambios, hacer pull normalmente
+        su - "$CURRENT_USER" -c "cd '$PROJECT_DIR' && git pull --no-rebase" || echo "   ⚠️  No se pudo actualizar (puede que no haya cambios o haya conflictos)"
+    else
+        # Hay cambios sin commitear, hacer stash, pull y luego aplicar stash
+        echo "   ⚠️  Detectados cambios sin commitear, guardándolos temporalmente..."
+        su - "$CURRENT_USER" -c "cd '$PROJECT_DIR' && git stash push -m 'Cambios guardados automáticamente por install_services.sh'" 2>/dev/null || true
+        su - "$CURRENT_USER" -c "cd '$PROJECT_DIR' && git pull --no-rebase" || echo "   ⚠️  No se pudo actualizar (puede que no haya cambios o haya conflictos)"
+        # Intentar aplicar los cambios guardados
+        if su - "$CURRENT_USER" -c "cd '$PROJECT_DIR' && git stash list | grep -q 'Cambios guardados automáticamente'" 2>/dev/null; then
+            echo "   🔄 Reaplicando cambios guardados..."
+            su - "$CURRENT_USER" -c "cd '$PROJECT_DIR' && git stash pop" 2>/dev/null || echo "   ⚠️  Advertencia: Hubo conflictos al reaplicar cambios. Revisa manualmente con 'git stash list'"
+        fi
+    fi
     echo ""
 fi
 
