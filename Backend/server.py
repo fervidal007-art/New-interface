@@ -16,7 +16,7 @@ import struct
 
 # --- CONFIGURACIÓN I2C OFICIAL ---
 # Basado en [cite: 92, 93]
-I2C_BUS = 1 #
+I2C_BUS = 0 #
 MOTOR_ADDR = 0x34 
 
 # Registros (TankDemo.py)
