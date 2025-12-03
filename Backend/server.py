@@ -119,7 +119,7 @@ def giro_derecha():
     print(f">> GIRO IZQ {v}")
     driver.enviar_velocidad(v)
 
-def giro_izquerda():
+def giro_izquierda():
     # Girar sobre su eje a la derecha: Izquierdos(+), Derechos(-)
     v = [VELOCIDAD, VELOCIDAD, -VELOCIDAD, -VELOCIDAD]
     print(f">> GIRO DER {v}")
