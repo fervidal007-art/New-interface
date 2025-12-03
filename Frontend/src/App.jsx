@@ -22,8 +22,11 @@ function App() {
   const [conversations, setConversations] = useState({});
   const [isLogsOpen, setIsLogsOpen] = useState(false);
   const [movementLocked, setMovementLocked] = useState(false);
-  const [speedLevel, setSpeedLevel] = useState(1);
+  const [rotationLocked, setRotationLocked] = useState(false);
+  const [speedLevel, setSpeedLevel] = useState(3);
   const [emergencyStopActive, setEmergencyStopActive] = useState(false);
+  const [activeMovement, setActiveMovement] = useState(null);
+  const [activeRotation, setActiveRotation] = useState(null);
 
   const handleDeviceList = useCallback(
     (data = {}) => {
@@ -75,6 +78,8 @@ function App() {
       setIsConnected(true);
       console.log('✅ Conectado al servidor');
       socketService.requestDeviceList();
+      // Enviar velocidad inicial al conectar
+      socketService.setSpeed(speedLevel);
     };
 
     const handleDisconnect = () => {
@@ -123,6 +128,23 @@ function App() {
   }, [movementInput]);
 
   const handleMovement = (action) => {
+    // Si hay un giro activo, no permitir movimiento hasta presionar stop
+    if (rotationLocked || activeRotation) {
+      console.log('⚠️ Hay un giro activo. Presiona PARO antes de mover.');
+      return;
+    }
+
+    // Si hay un movimiento activo y se intenta presionar otro botón, no permitir
+    if (movementLocked && activeMovement && activeMovement !== action) {
+      console.log('⚠️ Hay un movimiento activo. Presiona PARO antes de cambiar de dirección.');
+      return;
+    }
+
+    // Si el mismo botón ya está activo, no hacer nada
+    if (activeMovement === action) {
+      return;
+    }
+
     // Mapear acción a coordenadas para el estado local (para visualización)
     let x = 0;
     let y = 0;
@@ -159,32 +181,35 @@ function App() {
         break;
     }
     
-    // Verificar si hay movimiento previo
-    const hasPreviousMovement = movementInput.x !== 0 || movementInput.y !== 0;
-    const hasNewMovement = x !== 0 || y !== 0;
-    const isChangingDirection = hasPreviousMovement && hasNewMovement && 
-                                (movementInput.x !== x || movementInput.y !== y);
-    
-    // Si está cambiando de dirección y está bloqueado, no permitir
-    if (isChangingDirection && movementLocked) {
-      console.log('⚠️ Debes presionar PARO antes de cambiar de dirección');
-      return;
-    }
-    
-    // Si hay nuevo movimiento, enviar comando SIEMPRE (incluso si es el mismo botón)
-    // IMPORTANTE: Enviar el comando ANTES de actualizar el estado para asegurar que siempre se ejecute
-    if (hasNewMovement && isConnected) {
+    // Enviar comando al backend
+    if (isConnected) {
       socketService.sendCommand(action);
     }
     
     // Actualizar estado después de enviar el comando
-    if (hasNewMovement) {
-      setMovementLocked(true);
-      setMovementInput({ x, y });
-    }
+    setMovementLocked(true);
+    setActiveMovement(action);
+    setMovementInput({ x, y });
   };
 
   const handleRotation = (action) => {
+    // Si hay un movimiento activo, no permitir giro hasta presionar stop
+    if (movementLocked || activeMovement) {
+      console.log('⚠️ Hay un movimiento activo. Presiona PARO antes de girar.');
+      return;
+    }
+
+    // Si hay un giro activo y se intenta presionar otro botón, no permitir
+    if (rotationLocked && activeRotation && activeRotation !== action) {
+      console.log('⚠️ Hay un giro activo. Presiona PARO antes de cambiar de dirección.');
+      return;
+    }
+
+    // Si el mismo botón ya está activo, no hacer nada
+    if (activeRotation === action) {
+      return;
+    }
+
     // Mapear acción a rotación para el estado local (para visualización)
     let rotation = 0;
     switch (action) {
@@ -211,6 +236,10 @@ function App() {
     if (isConnected) {
       socketService.sendCommand(action);
     }
+
+    // Actualizar estado después de enviar el comando
+    setRotationLocked(true);
+    setActiveRotation(action);
   };
 
   const handleEmergencyStop = () => {
@@ -221,6 +250,9 @@ function App() {
     setRotationInput({ x: 0, y: 0 });
     setSpeed(0);
     setMovementLocked(false);
+    setRotationLocked(false);
+    setActiveMovement(null);
+    setActiveRotation(null);
     
     // Enviar comando de paro al backend
     if (isConnected) {
@@ -258,7 +290,12 @@ function App() {
         <SpeedDisplay speed={speed} />
         <SpeedControl 
           speedLevel={speedLevel}
-          onSpeedChange={setSpeedLevel}
+          onSpeedChange={(level) => {
+            setSpeedLevel(level);
+            if (isConnected) {
+              socketService.setSpeed(level);
+            }
+          }}
           disabled={!isConnected || !selectedDevice}
         />
         <Stats 
@@ -271,10 +308,10 @@ function App() {
         <div className="left-buttons">
           <MovementButtons 
             onMove={handleMovement}
-            disabled={!isConnected || !selectedDevice}
+            disabled={!isConnected || !selectedDevice || rotationLocked || activeRotation}
             onEmergencyStop={handleEmergencyStop}
             emergencyStopActive={emergencyStopActive}
-            activeMovement={movementInput}
+            activeMovement={activeMovement}
           />
         </div>
 
@@ -282,7 +319,8 @@ function App() {
         <div className="right-buttons">
           <RotationButtons 
             onRotate={handleRotation}
-            disabled={!isConnected || !selectedDevice}
+            disabled={!isConnected || !selectedDevice || movementLocked || activeMovement}
+            activeRotation={activeRotation}
           />
         </div>
       </div>

@@ -32,7 +32,9 @@ MOTOR_TYPE_JGB37_520_12V_110RPM = 3
 MOTOR_ENCODER_POLARITY = 0
 
 # Velocidad estándar para los movimientos (Ajustable de 0 a 100)
-VELOCIDAD = 50 
+# Se actualiza desde el frontend mediante el evento 'set_speed'
+# La velocidad se mapea desde niveles 1-5 (20%, 40%, 60%, 80%, 100%)
+VELOCIDAD = 60  # Valor por defecto (nivel 3 = 60%) 
 
 class HiwonderDriver:
     def __init__(self):
@@ -63,20 +65,19 @@ class HiwonderDriver:
 
     def enviar_velocidad(self, velocidades):
         """
-        Envía el array de 4 velocidades al registro 0x33 (Fixed Speed)
-        velocidades: lista de 4 enteros [m1, m2, m3, m4]
-        
+        Envía el array de 4 velocidades al registro 0x33 (Fixed Speed).
+        velocidades: lista de 4 enteros [m1, m2, m3, m4] con valores entre -100 y 100.
         """
         if self.simulation_mode:
-            print(f"[SIMULACIÓN] Motores moviéndose: {velocidades}")
+            print(f"[SIMULACIÓN] Enviando velocidades a motores: {velocidades}")
             return
 
         try:
-            # Escribir bloque I2C al registro 0x33
+            # Escribir bloque I2C al registro 0x33 (Fixed Speed)
             self.bus.write_i2c_block_data(MOTOR_ADDR, MOTOR_FIXED_SPEED_ADDR, velocidades)
             # NO ponemos sleep aquí para no bloquear el servidor, el driver se encarga.
         except Exception as e:
-            print(f"[I2C ERROR] No se pudo enviar comando: {e}")
+            print(f"[I2C ERROR] No se pudo enviar velocidades a los motores: {e}")
 
 # Instancia del driver
 driver = HiwonderDriver()
@@ -86,68 +87,69 @@ driver = HiwonderDriver()
 # Si un motor gira al revés, invierte el signo aquí.
 
 def detener():
-    print(">> DETENER")
+    """Detiene todos los motores estableciendo velocidad 0 en todos."""
+    print(f">> DETENER - Velocidades: [0, 0, 0, 0]")
     driver.enviar_velocidad([0, 0, 0, 0])
 
 def adelante():
-    # Todos positivos (o ajustar según cableado)
+    """Mueve el robot hacia adelante: todos los motores en dirección positiva."""
     v = [VELOCIDAD, VELOCIDAD, VELOCIDAD, VELOCIDAD] 
-    print(f">> ADELANTE {v}")
+    print(f">> ADELANTE - Velocidades: {v}")
     driver.enviar_velocidad(v)
 
 def atras():
-    # Todos negativos
+    """Mueve el robot hacia atrás: todos los motores en dirección negativa."""
     v = [-VELOCIDAD, -VELOCIDAD, -VELOCIDAD, -VELOCIDAD]
-    print(f">> ATRAS {v}")
+    print(f">> ATRAS - Velocidades: {v}")
     driver.enviar_velocidad(v)
 
 def derecha():
-    # Strafe Izquierda: M1(-), M2(+), M3(+), M4(-)
+    """Mueve el robot hacia la derecha (strafe): M1(-), M2(+), M3(+), M4(-)."""
     v = [-VELOCIDAD, VELOCIDAD, VELOCIDAD, -VELOCIDAD]
-    print(f">> IZQUIERDA {v}")
+    print(f">> DERECHA - Velocidades: {v}")
     driver.enviar_velocidad(v)
 
 def izquierda():
-    # Strafe Derecha: M1(+), M2(-), M3(-), M4(+)
+    """Mueve el robot hacia la izquierda (strafe): M1(+), M2(-), M3(-), M4(+)."""
     v = [VELOCIDAD, -VELOCIDAD, -VELOCIDAD, VELOCIDAD]
-    print(f">> DERECHA {v}")
+    print(f">> IZQUIERDA - Velocidades: {v}")
     driver.enviar_velocidad(v)
 
 def giro_derecha():
-    # Girar sobre su eje a la izquierda: Izquierdos(-), Derechos(+)
+    """Gira el robot sobre su eje hacia la derecha: Izquierdos(-), Derechos(+)."""
     v = [-VELOCIDAD, VELOCIDAD, -VELOCIDAD, VELOCIDAD]
-    print(f">> GIRO IZQ {v}")
+    print(f">> GIRO DERECHA - Velocidades: {v}")
     driver.enviar_velocidad(v)
 
 def giro_izquierda():
-    # Girar sobre su eje a la derecha: Izquierdos(+), Derechos(-)
+    """Gira el robot sobre su eje hacia la izquierda: Izquierdos(+), Derechos(-)."""
     v = [VELOCIDAD, -VELOCIDAD, VELOCIDAD, -VELOCIDAD]
-    print(f">> GIRO DER {v}")
+    print(f">> GIRO IZQUIERDA - Velocidades: {v}")
     driver.enviar_velocidad(v)
 
 # --- DIAGONALES (Solo mueven 2 ruedas) ---
 def diagonal_der_arriba():
-    # M1(0), M2(+), M3(+), M4(0)
+    """Diagonal derecha-arriba: M1(0), M2(+), M3(+), M4(0)."""
     v = [0, VELOCIDAD, VELOCIDAD, 0]
-    print(f">> DIAG IZQ ARRIBA {v}")
+    print(f">> DIAGONAL DERECHA-ARRIBA - Velocidades: {v}")
     driver.enviar_velocidad(v)
 
 def diagonal_izq_arriba():
-    # M1(+), M2(0), M3(0), M4(+)
+    """Diagonal izquierda-arriba: M1(+), M2(0), M3(0), M4(+)."""
     v = [VELOCIDAD, 0, 0, VELOCIDAD]
-    print(f">> DIAG DER ARRIBA {v}")
+    print(f">> DIAGONAL IZQUIERDA-ARRIBA - Velocidades: {v}")
     driver.enviar_velocidad(v)
 
 def diagonal_der_abajo():
-    # M1(-), M2(0), M3(0), M4(-)
+    """Diagonal derecha-abajo: M1(-), M2(0), M3(0), M4(-)."""
     v = [-VELOCIDAD, 0, 0, -VELOCIDAD]
-    print(f">> DIAG IZQ ABAJO {v}")
+    print(f">> DIAGONAL DERECHA-ABAJO - Velocidades: {v}")
     driver.enviar_velocidad(v)
 
 def diagonal_izq_abajo():
-    # M1(0), M2(-), M3(-), M4(0)
+    """Diagonal izquierda-abajo: M1(0), M2(-), M3(-), M4(0)."""
     v = [0, -VELOCIDAD, -VELOCIDAD, 0]
-    print(f">> DIAG DER ABAJO {v}")
+    print(f">> DIAGONAL IZQUIERDA-ABAJO - Velocidades: {v}")
     driver.enviar_velocidad(v)
 
 # Diccionario de comandos para mapear texto a función
@@ -294,6 +296,46 @@ async def list_devices(sid, data=None):
     
     await sio.emit('device_list', {
         'devices': device_list
+    }, room=sid)
+
+@sio.event
+async def set_speed(sid, data):
+    """
+    Actualiza la velocidad global del robot.
+    Data esperado: {"speed_level": 1-5} o {"speed": 0-100}
+    """
+    global VELOCIDAD
+    
+    # Verificar que el cliente está registrado como operador
+    client_info = connected_clients.get(sid, {})
+    if client_info.get('role') != 'operator':
+        print(f"[WARNING] Cliente {sid} intentó cambiar velocidad sin ser operador")
+        await sio.emit('error', {
+            'message': 'No autorizado: solo operadores pueden cambiar la velocidad'
+        }, room=sid)
+        return
+    
+    # Si viene speed_level (1-5), convertir a velocidad (20%, 40%, 60%, 80%, 100%)
+    if 'speed_level' in data:
+        level = data.get('speed_level', 3)
+        level = max(1, min(5, int(level)))  # Limitar entre 1 y 5
+        VELOCIDAD = level * 20  # 20, 40, 60, 80, 100
+        print(f"[SPEED] Velocidad actualizada a nivel {level} ({VELOCIDAD}%)")
+    # Si viene speed directo (0-100)
+    elif 'speed' in data:
+        VELOCIDAD = max(0, min(100, int(data.get('speed', 50))))
+        print(f"[SPEED] Velocidad actualizada a {VELOCIDAD}%")
+    else:
+        print(f"[ERROR] Formato de velocidad inválido: {data}")
+        await sio.emit('error', {
+            'message': 'Formato inválido: se requiere speed_level (1-5) o speed (0-100)'
+        }, room=sid)
+        return
+    
+    # Confirmar actualización
+    await sio.emit('speed_updated', {
+        'speed': VELOCIDAD,
+        'speed_level': VELOCIDAD // 20 if VELOCIDAD > 0 else 1
     }, room=sid)
 
 @sio.event

@@ -205,6 +205,16 @@ class SocketService {
     this.socket.emit('command', { action });
   }
 
+  // Actualizar velocidad del robot
+  setSpeed(speedLevel) {
+    if (!this.socket || !this.connected) {
+      console.warn('Socket no conectado');
+      return;
+    }
+    console.log(`📤 Actualizando velocidad a nivel ${speedLevel}`);
+    this.socket.emit('set_speed', { speed_level: speedLevel });
+  }
+
   // Paro de emergencia (mantener compatibilidad)
   emergencyStop() {
     this.sendCommand('stop');

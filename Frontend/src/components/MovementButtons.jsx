@@ -3,33 +3,29 @@ import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight, ArrowUpLeft, ArrowUpRight, A
 import EmergencyButton from './EmergencyButton';
 
 function MovementButtons({ onMove, disabled, onEmergencyStop, emergencyStopActive, activeMovement }) {
-  const [pressedButton, setPressedButton] = useState(null);
-
   // Mapear el movimiento activo a la dirección del botón
   const getActiveButton = () => {
     if (!activeMovement) return null;
     
-    const { x, y } = activeMovement;
+    // activeMovement es el nombre de la acción (ej: 'adelante', 'izquierda', etc.)
+    const actionToDirection = {
+      'adelante': 'up',
+      'atras': 'down',
+      'izquierda': 'left',
+      'derecha': 'right',
+      'diag_izq_arr': 'up-left',
+      'diag_der_arr': 'up-right',
+      'diag_izq_abj': 'down-left',
+      'diag_der_abj': 'down-right'
+    };
     
-    // Mapear coordenadas a dirección del botón
-    if (x === 0 && y === 1) return 'up'; // adelante
-    if (x === 0 && y === -1) return 'down'; // atras
-    if (x === -1 && y === 0) return 'left'; // izquierda
-    if (x === 1 && y === 0) return 'right'; // derecha
-    if (Math.abs(x - (-0.707)) < 0.01 && Math.abs(y - 0.707) < 0.01) return 'up-left'; // diag_izq_arr
-    if (Math.abs(x - 0.707) < 0.01 && Math.abs(y - 0.707) < 0.01) return 'up-right'; // diag_der_arr
-    if (Math.abs(x - (-0.707)) < 0.01 && Math.abs(y - (-0.707)) < 0.01) return 'down-left'; // diag_izq_abj
-    if (Math.abs(x - 0.707) < 0.01 && Math.abs(y - (-0.707)) < 0.01) return 'down-right'; // diag_der_abj
-    
-    return null;
+    return actionToDirection[activeMovement] || null;
   };
 
-  const activeButton = getActiveButton() || pressedButton;
+  const activeButton = getActiveButton();
 
   const handleButtonPress = (direction) => {
     if (disabled) return;
-    
-    setPressedButton(direction);
     
     // Mapear dirección a nombre de acción
     let action = '';
@@ -62,14 +58,15 @@ function MovementButtons({ onMove, disabled, onEmergencyStop, emergencyStopActiv
         return;
     }
     
-    onMove(action);
+    // Solo enviar si no es el mismo botón ya activo
+    if (activeMovement !== action) {
+      onMove(action);
+    }
   };
 
   const handleButtonRelease = () => {
-    if (disabled) return;
-    // NO resetear el botón presionado al soltar - mantener activo hasta presionar paro
-    // El botón permanecerá activo visualmente basado en activeMovement
-    // No llamar a onMove - mantener el último comando
+    // No hacer nada al soltar - el botón permanece activo hasta presionar stop
+    // El estado se mantiene basado en activeMovement
   };
 
   return (
