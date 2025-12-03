@@ -126,25 +126,25 @@ def giro_derecha():
     driver.enviar_velocidad(v)
 
 # --- DIAGONALES (Solo mueven 2 ruedas) ---
-def diagonal_izq_arriba():
+def diagonal_der_arriba():
     # M1(0), M2(+), M3(+), M4(0)
     v = [0, VELOCIDAD, VELOCIDAD, 0]
     print(f">> DIAG IZQ ARRIBA {v}")
     driver.enviar_velocidad(v)
 
-def diagonal_der_arriba():
+def diagonal_izq_arriba():
     # M1(+), M2(0), M3(0), M4(+)
     v = [VELOCIDAD, 0, 0, VELOCIDAD]
     print(f">> DIAG DER ARRIBA {v}")
     driver.enviar_velocidad(v)
 
-def diagonal_izq_abajo():
+def diagonal_der_abajo():
     # M1(-), M2(0), M3(0), M4(-)
     v = [-VELOCIDAD, 0, 0, -VELOCIDAD]
     print(f">> DIAG IZQ ABAJO {v}")
     driver.enviar_velocidad(v)
 
-def diagonal_der_abajo():
+def diagonal_izq_abajo():
     # M1(0), M2(-), M3(-), M4(0)
     v = [0, -VELOCIDAD, -VELOCIDAD, 0]
     print(f">> DIAG DER ABAJO {v}")
