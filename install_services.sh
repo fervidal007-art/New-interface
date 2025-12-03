@@ -1,4 +1,5 @@
 #!/bin/bash
+
 # Script para instalar y configurar completamente RoboMesha
 # Ejecutar con: sudo ./install_services.sh
 # Este script configura todo: venv, dependencias y servicios systemd
@@ -110,9 +111,19 @@ if ! command -v npm &> /dev/null; then
     echo "✅ Node.js instalado"
 fi
 
+# Verificar versión de Node.js y npm
+if command -v node &> /dev/null; then
+    NODE_VERSION=$(node --version)
+    echo "   Node.js versión: $NODE_VERSION"
+fi
+if command -v npm &> /dev/null; then
+    NPM_VERSION=$(npm --version)
+    echo "   npm versión: $NPM_VERSION"
+fi
+
 # Instalar dependencias del frontend (siempre limpio para evitar problemas de arquitectura)
 if [ -d "$FRONTEND_DIR" ]; then
-    # Eliminar node_modules y package-lock.json si existen para reinstalación limpia
+    # Eliminar node_modules y archivos de lock si existen para reinstalación limpia
     # Esto evita problemas cuando se clonó desde otra arquitectura (ej: Mac -> ARM64)
     echo "🧹 Limpiando instalación anterior del frontend (si existe)..."
     if [ -d "$FRONTEND_DIR/node_modules" ]; then
@@ -123,11 +134,89 @@ if [ -d "$FRONTEND_DIR" ]; then
         su - "$CURRENT_USER" -c "rm -f '$FRONTEND_DIR/package-lock.json'"
         echo "   Eliminado package-lock.json anterior"
     fi
-    
+    if [ -f "$FRONTEND_DIR/pnpm-lock.yaml" ]; then
+        su - "$CURRENT_USER" -c "rm -f '$FRONTEND_DIR/pnpm-lock.yaml'"
+        echo "   Eliminado pnpm-lock.yaml anterior (usando npm, no pnpm)"
+    fi
+
+    # Limpiar cache de npm para evitar errores de integridad (especialmente en Raspberry Pi)
+    echo "🧹 Limpiando cache de npm..."
+    su - "$CURRENT_USER" -c "npm cache clean --force" || echo "   ⚠️  Advertencia: No se pudo limpiar cache (continuando...)"
+    echo "   Cache de npm limpiado"
+
     echo "📥 Instalando dependencias del frontend (esto puede tardar unos minutos)..."
     echo "   Instalando para arquitectura ARM64 (Raspberry Pi)..."
-    su - "$CURRENT_USER" -c "cd '$FRONTEND_DIR' && npm install"
-    echo "✅ Dependencias del frontend instaladas correctamente"
+
+    # Desactivar set -e temporalmente para permitir reintentos
+    set +e
+
+    # Intentar instalación con diferentes estrategias
+    FRONTEND_INSTALLED=0
+    attempt=1
+    max_attempts=3
+
+    while [ $attempt -le $max_attempts ] && [ $FRONTEND_INSTALLED -eq 0 ]; do
+        echo "   Intento $attempt de $max_attempts..."
+
+        if [ $attempt -eq 1 ]; then
+            # Primer intento: instalación normal
+            if su - "$CURRENT_USER" -c "cd '$FRONTEND_DIR' && npm install" 2>&1; then
+                FRONTEND_INSTALLED=1
+                echo "✅ Instalación exitosa en el intento $attempt"
+            else
+                echo "   ⚠️  Intento $attempt fallido"
+            fi
+        elif [ $attempt -eq 2 ]; then
+            # Segundo intento: limpiar cache y usar --legacy-peer-deps
+            echo "   Limpiando cache nuevamente y reintentando con opciones alternativas..."
+            su - "$CURRENT_USER" -c "npm cache clean --force" 2>&1 || true
+            if su - "$CURRENT_USER" -c "cd '$FRONTEND_DIR' && npm install --legacy-peer-deps" 2>&1; then
+                FRONTEND_INSTALLED=1
+                echo "✅ Instalación exitosa en el intento $attempt"
+            else
+                echo "   ⚠️  Intento $attempt fallido"
+            fi
+        else
+            # Tercer intento: limpiar cache y usar --force
+            echo "   Último intento: limpiando cache y usando instalación forzada..."
+            su - "$CURRENT_USER" -c "npm cache clean --force" 2>&1 || true
+            # Eliminar node_modules si existe para intento limpio
+            su - "$CURRENT_USER" -c "rm -rf '$FRONTEND_DIR/node_modules'" 2>&1 || true
+            if su - "$CURRENT_USER" -c "cd '$FRONTEND_DIR' && npm install --force --no-audit --no-fund" 2>&1; then
+                FRONTEND_INSTALLED=1
+                echo "✅ Instalación exitosa en el intento $attempt"
+            else
+                echo "   ⚠️  Intento $attempt fallido"
+            fi
+        fi
+
+        if [ $FRONTEND_INSTALLED -eq 0 ] && [ $attempt -lt $max_attempts ]; then
+            echo "   Esperando 5 segundos antes de reintentar..."
+            sleep 5
+        fi
+
+        attempt=$((attempt + 1))
+    done
+
+    # Reactivar set -e
+    set -e
+
+    if [ $FRONTEND_INSTALLED -eq 1 ]; then
+        echo "✅ Dependencias del frontend instaladas correctamente"
+    else
+        echo "❌ Error: No se pudieron instalar las dependencias del frontend después de $max_attempts intentos"
+        echo ""
+        echo "   Soluciones posibles:"
+        echo "   1. Verifica tu conexión a internet"
+        echo "   2. Intenta manualmente:"
+        echo "      cd $FRONTEND_DIR"
+        echo "      npm cache clean --force"
+        echo "      npm install --legacy-peer-deps"
+        echo "   3. Verifica los logs de npm:"
+        echo "      cat ~/.npm/_logs/*-debug.log"
+        echo ""
+        exit 1
+    fi
 else
     echo "⚠️  Advertencia: No se encuentra el directorio Frontend/"
 fi
@@ -235,6 +324,7 @@ echo "=========================================="
 echo "✅ ¡Despliegue completo!"
 echo "=========================================="
 echo ""
+
 echo "📦 Resumen de lo desplegado:"
 echo ""
 echo "   ✅ Backend configurado:"
@@ -252,6 +342,7 @@ echo "      - robomesha-backend.service: Habilitado y corriendo"
 echo "      - robomesha-frontend.service: Habilitado y corriendo"
 echo "      - Inicio automático configurado para después de reiniciar"
 echo ""
+
 echo "=========================================="
 echo ""
 echo "📝 Comandos útiles:"
